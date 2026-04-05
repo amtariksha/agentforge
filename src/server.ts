@@ -20,6 +20,7 @@ import { toolRoutes } from './admin/tools/routes.js';
 import { guardrailRoutes } from './admin/guardrails/routes.js';
 import { webhookAdminRoutes } from './admin/webhooks/routes.js';
 import { knowledgeBaseRoutes } from './memory/knowledge-base.js';
+import { websocketRoutes } from './gateway/websocket.js';
 import { initializeGateway } from './tools/tenant-gateway/registry.js';
 import { logger } from './shared/utils/logger.js';
 import { redis } from './shared/redis.js';
@@ -74,6 +75,7 @@ async function start() {
   await app.register(guardrailRoutes);
   await app.register(webhookAdminRoutes);
   await app.register(knowledgeBaseRoutes);
+  await app.register(websocketRoutes);
 
   // Global error handler
   app.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, _request, reply) => {

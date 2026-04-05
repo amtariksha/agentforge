@@ -15,6 +15,7 @@ import { detectLanguage } from './language.js';
 import { loadToolsForAgent, executeTool } from '../tools/executor.js';
 import { sendWhatsAppText } from '../gateway/whatsapp/sender.js';
 import { createChildLogger } from '../shared/utils/logger.js';
+import { checkBudget, incrementBudgetUsage } from './budget.js';
 import type { UnifiedMessage, TenantConfig, ConversationTrace, IntentClassification } from '../shared/types/index.js';
 
 const log = createChildLogger({ module: 'agent-loop' });
@@ -53,6 +54,19 @@ export async function processMessage(
       content: { text: message.content.text, mediaUrl: message.content.mediaUrl, contentType: message.content.type },
       metadata: message.metadata,
     });
+
+    // 3b. Budget check
+    const budget = await checkBudget(tenantId, tenantConfig);
+    if (!budget.withinBudget) {
+      childLog.warn({ used: budget.used, limit: budget.limit }, 'Tenant budget exceeded');
+      if (message.channel === 'whatsapp') {
+        await sendWhatsAppText(tenantConfig, {
+          to: message.sender.platformUserId,
+          text: 'Our AI assistant is temporarily unavailable. Please contact us directly for help.',
+        });
+      }
+      return;
+    }
 
     // 4. Input guardrails
     const inputText = message.content.text ?? '';
@@ -331,6 +345,9 @@ export async function processMessage(
       tokensCached: totalCachedTokens,
       costUsd: costUsd.toFixed(6),
     });
+
+    // Update budget counter
+    await incrementBudgetUsage(tenantId, totalInputTokens + totalOutputTokens);
 
     childLog.info({
       totalMs,
