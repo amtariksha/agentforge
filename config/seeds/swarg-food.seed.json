@@ -1,0 +1,253 @@
+{
+  "tenant": {
+    "name": "Swarg Food",
+    "slug": "swarg-food",
+    "config": {
+      "persona": {
+        "name": "Swarg Assistant",
+        "avatar": { "name": "Swarg", "emoji": "🌿" },
+        "personalityTraits": ["warm", "health-conscious", "knowledgeable"],
+        "tone": "balanced",
+        "definition": "You are Swarg Assistant, the friendly AI helper for Swarg Food — a Bangalore-based healthy food subscription service delivering A2 desi cow milk, traditional healthy products, and fresh meals to 1000+ families.",
+        "guidelines": "Always emphasize health benefits of products. Suggest complementary items naturally. Address customers by name when known. Be patient with delivery complaints — acknowledge, apologize, resolve. Never badmouth competitors. Use Hindi/Kannada words naturally if the user speaks those languages.",
+        "introduction": "Hello! Welcome to Swarg Food 🌿 I'm here to help you with your healthy food subscriptions, deliveries, and orders. How can I assist you today?",
+        "languagePrimary": "en",
+        "languageSupported": ["en", "hi", "kn"],
+        "responseStyle": {
+          "maxLength": "medium",
+          "useEmojis": true,
+          "useMarkdown": false,
+          "formattingRules": "Keep responses conversational. Use food emoji sparingly (🥛🌿🍯). Never use bullet points — use natural sentences."
+        },
+        "fallbackMessage": "I'm not sure I can help with that, but let me connect you with our team. One moment please!",
+        "systemPromptAdditions": "Swarg Food's USP is traditional, chemical-free, healthy food. A2 desi cow milk is our flagship product. 70% of revenue comes from early morning milk delivery subscriptions. We cover most of Bangalore."
+      },
+      "channels": {
+        "whatsapp": {
+          "phoneNumberId": "ENV:SWARG_WA_PHONE_ID",
+          "wabaId": "ENV:SWARG_WA_WABA_ID",
+          "accessToken": "ENV:SWARG_WA_ACCESS_TOKEN",
+          "webhookVerifyToken": "ENV:SWARG_WA_VERIFY_TOKEN",
+          "appSecret": "ENV:SWARG_WA_APP_SECRET",
+          "coexistenceEnabled": true,
+          "operatorPauseMinutes": 30
+        }
+      },
+      "backend": {
+        "baseUrl": "",
+        "authType": "api_key",
+        "authCredentials": {},
+        "userLookupEndpoint": "",
+        "rateLimit": { "requestsPerMinute": 60, "requestsPerHour": 1000 }
+      },
+      "ai": {
+        "primaryModel": "claude-sonnet-4-6",
+        "premiumModel": "claude-opus-4-6",
+        "routingModel": "claude-haiku-4-5",
+        "maxTokensPerResponse": 500,
+        "temperature": 0.7,
+        "monthlyTokenBudget": 5000000,
+        "enableThinking": false,
+        "promptCacheEnabled": true
+      },
+      "context": {
+        "systemTokenBudget": 2000,
+        "shortTermBudget": 3000,
+        "longTermBudget": 2000,
+        "memoryIndexBudget": 300,
+        "summarizationThreshold": 6000,
+        "maxConversationTurns": 50
+      },
+      "hitl": {
+        "autoEscalateConfidenceBelow": 0.3,
+        "autoEscalateTopics": ["refund", "legal", "complaint"],
+        "requireApprovalForActions": ["cancel_subscription", "process_refund"],
+        "maxAutoActionsPerSession": 10,
+        "escalationChannels": ["dashboard", "whatsapp"]
+      },
+      "orchestrator": {
+        "enableAutoRouting": true,
+        "confidenceThreshold": 0.4,
+        "maxAgentSwitchesPerSession": 3,
+        "handoffOnLowConfidence": true,
+        "handoffOnNegativeSentiment": true,
+        "handoffOnUserRequest": true,
+        "handoffKeywords": ["human", "manager", "call me", "talk to person"]
+      },
+      "agents": []
+    }
+  },
+  "agents": [
+    {
+      "name": "Customer Support",
+      "slug": "support",
+      "avatarEmoji": "🛟",
+      "description": "Handles delivery issues, subscription changes, complaints, account queries",
+      "systemPrompt": "You are the support specialist for Swarg Food. Your priority is resolving customer issues quickly and empathetically. For delivery complaints: always check the delivery schedule first, then explain what happened. For subscription changes: confirm the change before executing. Never assume — always verify with the backend.",
+      "intentKeywords": ["delivery", "late", "missing", "complaint", "cancel", "pause", "resume", "address", "change"],
+      "intentExamples": ["My milk didn't arrive today", "I want to pause my subscription", "Change my delivery address"],
+      "priority": 1,
+      "confidenceThreshold": 0.5,
+      "isDefault": true,
+      "modelOverride": null,
+      "availableTools": ["get_user_profile", "get_subscription", "get_delivery_schedule", "get_order_status", "update_subscription", "update_delivery_address", "register_complaint", "schedule_callback"],
+      "activeHours": null
+    },
+    {
+      "name": "Sales & Recommendations",
+      "slug": "sales",
+      "avatarEmoji": "🛒",
+      "description": "Product recommendations, new subscriptions, upselling, pricing queries",
+      "systemPrompt": "You are the sales specialist for Swarg Food. Recommend products based on the customer's preferences and order history. Highlight health benefits. Suggest complementary products naturally (e.g., if they order milk, suggest ghee or paneer). Never be pushy. If they're not interested, gracefully acknowledge.",
+      "intentKeywords": ["buy", "price", "product", "subscribe", "new", "recommend", "menu", "catalog", "offer"],
+      "intentExamples": ["What products do you have?", "How much is A2 milk?", "I want to start a subscription"],
+      "priority": 2,
+      "confidenceThreshold": 0.6,
+      "isDefault": false,
+      "modelOverride": "claude-haiku-4-5",
+      "availableTools": ["get_user_profile", "search_products", "get_product_details", "get_subscription_plans", "create_subscription", "create_order"],
+      "activeHours": null
+    }
+  ],
+  "tools": [
+    {
+      "definition": {
+        "name": "get_user_profile",
+        "description": "Get the customer's profile including name, address, active subscriptions, and preferences",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phone": { "type": "string", "description": "Customer phone number" }
+          },
+          "required": ["phone"]
+        },
+        "backendMapping": { "type": "internal", "handler": "swarg-food.getUserProfile" },
+        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't retrieve your account details right now. Let me try again." },
+        "permissions": { "agentTypes": ["support", "sales"], "requiresUserAuth": false },
+        "isActive": true
+      },
+      "assignToAgents": ["support", "sales"]
+    },
+    {
+      "definition": {
+        "name": "get_subscription",
+        "description": "Get details of a customer's active subscription including plan, frequency, items, and status",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phone": { "type": "string", "description": "Customer phone number" },
+            "subscription_id": { "type": "string", "description": "Optional specific subscription ID" }
+          },
+          "required": ["phone"]
+        },
+        "backendMapping": { "type": "internal", "handler": "swarg-food.getSubscription" },
+        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't retrieve your subscription details right now." },
+        "permissions": { "agentTypes": ["support", "sales"], "requiresUserAuth": false },
+        "isActive": true
+      },
+      "assignToAgents": ["support", "sales"]
+    },
+    {
+      "definition": {
+        "name": "get_delivery_schedule",
+        "description": "Get delivery schedule for a customer on a given date, showing expected time, items, and status",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "phone": { "type": "string", "description": "Customer phone number" },
+            "date": { "type": "string", "description": "Date in YYYY-MM-DD format. Defaults to today." }
+          },
+          "required": ["phone"]
+        },
+        "backendMapping": { "type": "internal", "handler": "swarg-food.getDeliverySchedule" },
+        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't check your delivery schedule right now." },
+        "permissions": { "agentTypes": ["support"], "requiresUserAuth": false },
+        "isActive": true
+      },
+      "assignToAgents": ["support"]
+    },
+    {
+      "definition": {
+        "name": "search_products",
+        "description": "Search the product catalog by name or category",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": { "type": "string", "description": "Search term" },
+            "category": { "type": "string", "description": "Product category filter" }
+          },
+          "required": []
+        },
+        "backendMapping": { "type": "internal", "handler": "swarg-food.searchProducts" },
+        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't search products right now." },
+        "permissions": { "agentTypes": ["sales"], "requiresUserAuth": false },
+        "isActive": true
+      },
+      "assignToAgents": ["sales"]
+    },
+    {
+      "definition": {
+        "name": "cancel_subscription",
+        "description": "Cancel a customer's subscription entirely. This is destructive — requires HITL approval.",
+        "category": "destructive",
+        "requiresHitl": true,
+        "requiresUserConfirm": true,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "subscription_id": { "type": "string", "description": "Subscription ID to cancel" },
+            "reason": { "type": "string", "description": "Reason for cancellation" }
+          },
+          "required": ["subscription_id", "reason"]
+        },
+        "backendMapping": { "type": "internal", "handler": "swarg-food.cancelSubscription" },
+        "execution": { "timeoutMs": 10000, "retryCount": 0, "fallbackMessage": "I couldn't process the cancellation. Let me connect you with our team." },
+        "permissions": { "agentTypes": ["support"], "requiresUserAuth": true },
+        "isActive": true
+      },
+      "assignToAgents": ["support"]
+    }
+  ],
+  "guardrails": [
+    {
+      "name": "Block competitor mentions in output",
+      "ruleType": "keyword_block",
+      "config": { "keywords": ["milkbasket", "supr daily", "bigbasket", "country delight", "amul app"], "caseSensitive": false },
+      "action": "redact",
+      "appliesTo": "output",
+      "priority": 1,
+      "isActive": true
+    },
+    {
+      "name": "PII protection",
+      "ruleType": "pii_detection",
+      "config": { "detect": ["aadhaar", "pan_card", "credit_card"] },
+      "action": "redact",
+      "appliesTo": "both",
+      "priority": 0,
+      "isActive": true
+    }
+  ],
+  "humanAgents": [
+    { "name": "Pradeep", "email": "pradeep@swargfood.com", "role": "admin", "password": "changeme123" },
+    { "name": "Swarg Support", "email": "support@swargfood.com", "role": "operator", "password": "changeme123" }
+  ],
+  "webhookConfigs": [
+    {
+      "url": "https://wacrm.amtariksha.com/webhooks/agentforge",
+      "events": ["lead_captured", "ticket_created", "handoff_triggered", "conversation_closed"]
+    }
+  ]
+}
