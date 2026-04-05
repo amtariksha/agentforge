@@ -11,6 +11,15 @@ import { liveChatRoutes } from './admin/live-chat/manager.js';
 import { ticketRoutes } from './admin/tickets/routes.js';
 import { correctionRoutes } from './admin/corrections/routes.js';
 import { humanAgentRoutes } from './admin/agents/routes.js';
+import { telegramWebhookRoutes } from './gateway/telegram/webhook.js';
+import { mobileApiRoutes } from './gateway/mobile/routes.js';
+import { conversationRoutes } from './admin/conversations/routes.js';
+import { analyticsRoutes } from './admin/analytics/routes.js';
+import { agentTypeRoutes } from './admin/agent-types/routes.js';
+import { toolRoutes } from './admin/tools/routes.js';
+import { guardrailRoutes } from './admin/guardrails/routes.js';
+import { webhookAdminRoutes } from './admin/webhooks/routes.js';
+import { knowledgeBaseRoutes } from './memory/knowledge-base.js';
 import { initializeGateway } from './tools/tenant-gateway/registry.js';
 import { logger } from './shared/utils/logger.js';
 import { redis } from './shared/redis.js';
@@ -56,6 +65,15 @@ async function start() {
   await app.register(ticketRoutes);
   await app.register(correctionRoutes);
   await app.register(humanAgentRoutes);
+  await app.register(telegramWebhookRoutes);
+  await app.register(mobileApiRoutes);
+  await app.register(conversationRoutes);
+  await app.register(analyticsRoutes);
+  await app.register(agentTypeRoutes);
+  await app.register(toolRoutes);
+  await app.register(guardrailRoutes);
+  await app.register(webhookAdminRoutes);
+  await app.register(knowledgeBaseRoutes);
 
   // Global error handler
   app.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, _request, reply) => {
