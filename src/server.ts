@@ -21,6 +21,7 @@ import { guardrailRoutes } from './admin/guardrails/routes.js';
 import { webhookAdminRoutes } from './admin/webhooks/routes.js';
 import { knowledgeBaseRoutes } from './memory/knowledge-base.js';
 import { websocketRoutes } from './gateway/websocket.js';
+import { startWorkers, setupRecurringJobs } from './shared/queue.js';
 import { initializeGateway } from './tools/tenant-gateway/registry.js';
 import { logger } from './shared/utils/logger.js';
 import { redis } from './shared/redis.js';
@@ -119,6 +120,10 @@ async function start() {
 
   const host = process.env.HOST ?? '0.0.0.0';
   const port = parseInt(process.env.PORT ?? '3000', 10);
+
+  // Start BullMQ workers and recurring jobs
+  startWorkers();
+  await setupRecurringJobs();
 
   await app.listen({ host, port });
   app.log.info(`AgentForge server running at http://${host}:${port}`);
