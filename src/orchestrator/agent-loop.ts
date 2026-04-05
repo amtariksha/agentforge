@@ -14,6 +14,12 @@ import { getMemoryIndex } from '../memory/memory-manager.js';
 import { detectLanguage } from './language.js';
 import { loadToolsForAgent, executeTool } from '../tools/executor.js';
 import { sendWhatsAppText } from '../gateway/whatsapp/sender.js';
+import { sendTelegramText } from '../gateway/telegram/webhook.js';
+import { isAgentPaused } from '../gateway/whatsapp/coexistence.js';
+import { fireWebhooks } from '../gateway/outbound-webhooks.js';
+import { evaluateEscalation, executeEscalation } from '../admin/hitl/escalation.js';
+import { loadActiveCorrections } from '../admin/corrections/routes.js';
+import { searchKnowledge } from '../memory/knowledge-base.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 import { checkBudget, incrementBudgetUsage } from './budget.js';
 import type { UnifiedMessage, TenantConfig, ConversationTrace, IntentClassification } from '../shared/types/index.js';
@@ -41,6 +47,15 @@ export async function processMessage(
     // 1. Resolve or create user
     const user = await resolveUser(tenantId, message);
     childLog.info({ userId: user.id }, 'User resolved');
+
+    // 1b. WhatsApp coexistence: skip if operator paused the agent
+    if (message.channel === 'whatsapp') {
+      const paused = await isAgentPaused(tenantId, message.sender.platformUserId);
+      if (paused) {
+        childLog.info({ phone: message.sender.platformUserId }, 'Agent paused — operator handling');
+        return;
+      }
+    }
 
     // 2. Find or create conversation
     const conversation = await resolveConversation(tenantId, user.id, message.channel);
@@ -121,8 +136,49 @@ export async function processMessage(
       ? selectModel(classification, tenantConfig, agentModelOverride)
       : (agentModelOverride ?? tenantConfig.ai.primaryModel);
 
+    // 6b. Escalation check
+    if (classification) {
+      const escalation = evaluateEscalation({
+        tenantId,
+        conversationId: conversation.id,
+        userId: user.id,
+        classification,
+        messageText: processedInput,
+        messageCount: conversation.messageCount ?? 0,
+      }, tenantConfig);
+
+      if (escalation.shouldEscalate) {
+        await executeEscalation({
+          tenantId,
+          conversationId: conversation.id,
+          userId: user.id,
+          classification,
+          messageText: processedInput,
+          messageCount: conversation.messageCount ?? 0,
+        }, escalation);
+
+        await fireWebhooks(tenantId, 'handoff_triggered', {
+          conversationId: conversation.id,
+          reasons: escalation.reasons,
+          priority: escalation.priority,
+        });
+      }
+    }
+
     // 7. Load memory index (Layer 1)
     const memoryIndex = await getMemoryIndex(user.id, tenantId);
+
+    // 7b. RAG context (knowledge base search)
+    let ragContext: string | undefined;
+    if (classification?.requiresRag && processedInput) {
+      const kbResults = await searchKnowledge(tenantId, processedInput, 3);
+      if (kbResults.length > 0) {
+        ragContext = kbResults.map(r => r.content).join('\n---\n');
+      }
+    }
+
+    // 7c. Load active correction rules
+    const corrections = await loadActiveCorrections(tenantId, agentSlug);
 
     // 8. Load tools for agent
     const toolDefs = await loadToolsForAgent(tenantId, agentSlug);
@@ -173,6 +229,8 @@ export async function processMessage(
       toolDefinitions: anthropicTools,
       userProfile: user.profileData as Record<string, unknown> | undefined,
       memoryIndex: memoryIndex ?? undefined,
+      ragContext,
+      corrections: corrections.length > 0 ? corrections : undefined,
       conversationHistory: compactedHistory,
       language: detectedLanguage !== 'en' ? detectedLanguage : (user.languagePreferred ?? undefined),
     });
@@ -292,13 +350,32 @@ export async function processMessage(
       })
       .where(eq(conversations.id, conversation.id));
 
-    // 11. Send response via channel
-    if (message.channel === 'whatsapp' && finalText) {
-      await sendWhatsAppText(tenantConfig, {
-        to: message.sender.platformUserId,
-        text: finalText,
-      });
+    // 15. Send response via channel
+    if (finalText) {
+      switch (message.channel) {
+        case 'whatsapp':
+          await sendWhatsAppText(tenantConfig, {
+            to: message.sender.platformUserId,
+            text: finalText,
+          });
+          break;
+        case 'telegram': {
+          const botToken = tenantConfig.channels.telegram?.botToken;
+          if (botToken) {
+            await sendTelegramText(botToken, message.sender.platformUserId, finalText);
+          }
+          break;
+        }
+        // web + app channels deliver via WebSocket/SSE (handled separately)
+      }
     }
+
+    // 16. Fire outbound webhooks
+    fireWebhooks(tenantId, 'conversation_started', {
+      conversationId: conversation.id,
+      channel: message.channel,
+      userId: user.id,
+    }).catch(() => { /* non-blocking */ });
 
     // 17. Log trace
     const totalMs = Date.now() - startTime;

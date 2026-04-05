@@ -37,6 +37,7 @@ interface PromptContext {
   // Dynamic context
   userProfile?: Record<string, unknown>;
   memoryIndex?: string;
+  ragContext?: string;
   conversationHistory: Anthropic.MessageParam[];
   language?: string;
   corrections?: string[];
@@ -96,6 +97,13 @@ export function buildPrompt(ctx: PromptContext): BuiltPrompt {
   if (ctx.memoryIndex) {
     dynamicParts.push('', '## Memory Index (hints — verify before acting)');
     dynamicParts.push(ctx.memoryIndex);
+  }
+
+  // RAG context (knowledge base results)
+  if (ctx.ragContext) {
+    dynamicParts.push('', '## Relevant Knowledge Base Context');
+    dynamicParts.push('Use the following information to answer the customer\'s question if relevant:');
+    dynamicParts.push(ctx.ragContext);
   }
 
   // Active corrections
