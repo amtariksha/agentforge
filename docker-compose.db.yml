@@ -1,0 +1,40 @@
+# Run this on the DEDICATED DATABASE VPS only
+# Usage: docker compose -f docker-compose.db.yml up -d
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-agentforge}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-agentforge}
+    ports:
+      - "0.0.0.0:5432:5432"   # Exposed — firewall must restrict to app server IP only
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./drizzle/0000_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-agentforge}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    # Performance tuning for 8GB RAM dedicated DB server
+    command: >
+      postgres
+      -c shared_buffers=2GB
+      -c effective_cache_size=6GB
+      -c work_mem=64MB
+      -c maintenance_work_mem=512MB
+      -c max_connections=100
+      -c max_parallel_workers_per_gather=2
+      -c max_wal_size=2GB
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c wal_buffers=64MB
+      -c log_min_duration_statement=1000
+      -c listen_addresses='*'
+
+volumes:
+  pgdata:

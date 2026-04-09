@@ -175,35 +175,63 @@ ENVEOF
 fi
 
 ###############################################################################
-# 7. Build and start services
+# 7. Detect architecture: all-in-one vs separate DB server
 ###############################################################################
-log "Building and starting Docker services..."
+source "${ENV_FILE}"
+COMPOSE_FILE="docker-compose.prod.yml"
+
+# If DATABASE_URL points to a remote host (not postgres/localhost), use app-only compose
+DB_HOST=$(echo "${DATABASE_URL:-}" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+if [[ -n "${DB_HOST}" && "${DB_HOST}" != "postgres" && "${DB_HOST}" != "localhost" && "${DB_HOST}" != "127.0.0.1" ]]; then
+    COMPOSE_FILE="docker-compose.app.yml"
+    log "Detected remote database at ${DB_HOST} — using app-only compose (no local Postgres)"
+else
+    log "Using all-in-one compose (app + Postgres + Redis on this server)"
+fi
+
+###############################################################################
+# 8. Build and start services
+###############################################################################
+log "Building and starting Docker services (${COMPOSE_FILE})..."
 cd "${APP_DIR}"
-sudo -u "${DEPLOY_USER}" docker compose -f docker-compose.prod.yml up -d --build
+sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" up -d --build
 
-# Wait for Postgres to be ready
-log "Waiting for PostgreSQL to be ready..."
-for i in {1..30}; do
-    if sudo -u "${DEPLOY_USER}" docker compose -f docker-compose.prod.yml exec -T postgres pg_isready -U agentforge &>/dev/null; then
-        log "PostgreSQL is ready"
-        break
-    fi
-    sleep 2
-done
+if [[ "${COMPOSE_FILE}" == "docker-compose.prod.yml" ]]; then
+    # Wait for local Postgres
+    log "Waiting for PostgreSQL to be ready..."
+    for i in {1..30}; do
+        if sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T postgres pg_isready -U agentforge &>/dev/null; then
+            log "PostgreSQL is ready"
+            break
+        fi
+        sleep 2
+    done
+fi
+
+# Wait for app to start
+sleep 5
 
 ###############################################################################
-# 8. Run migrations and seed
+# 9. Run migrations and seed
 ###############################################################################
 log "Running database migrations..."
-sudo -u "${DEPLOY_USER}" docker compose -f docker-compose.prod.yml exec -T app npx drizzle-kit push 2>&1 || warn "Migration may need manual review"
+sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T app npx drizzle-kit push 2>&1 || warn "Migration may need manual review"
 
-# Apply pgvector + RLS
-log "Applying pgvector extension and RLS policies..."
-sudo -u "${DEPLOY_USER}" docker compose -f docker-compose.prod.yml exec -T postgres \
-    psql -U agentforge -d agentforge < "${APP_DIR}/drizzle/0000_init.sql" 2>&1 || warn "RLS SQL may need manual review"
+if [[ "${COMPOSE_FILE}" == "docker-compose.prod.yml" ]]; then
+    # Apply pgvector + RLS on local Postgres
+    log "Applying pgvector extension and RLS policies..."
+    sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T postgres \
+        psql -U agentforge -d agentforge < "${APP_DIR}/drizzle/0000_init.sql" 2>&1 || warn "RLS SQL may need manual review"
+else
+    log "Skipping RLS SQL — run it on the DB server if not done already"
+fi
 
 log "Seeding database..."
-sudo -u "${DEPLOY_USER}" docker compose -f docker-compose.prod.yml exec -T app npx tsx scripts/seed.ts 2>&1 || warn "Seed may need manual review"
+sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T app npx tsx scripts/seed.ts 2>&1 || warn "Seed may need manual review"
+
+# Store which compose file to use for deploy.sh
+echo "${COMPOSE_FILE}" > "${APP_DIR}/.compose-file"
+chown "${DEPLOY_USER}:${DEPLOY_USER}" "${APP_DIR}/.compose-file"
 
 ###############################################################################
 # 9. Setup Nginx reverse proxy

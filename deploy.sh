@@ -32,7 +32,12 @@ log()  { echo -e "${GREEN}[DEPLOY]${NC} $1"; }
 warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 err()  { echo -e "${RED}[ERROR]${NC} $1"; exit 1; }
 
-COMPOSE_FILE="docker-compose.prod.yml"
+# Auto-detect compose file (set by setup-server.sh)
+if [[ -f ".compose-file" ]]; then
+    COMPOSE_FILE=$(cat .compose-file)
+else
+    COMPOSE_FILE="docker-compose.prod.yml"
+fi
 SEED=false
 FULL_REBUILD=false
 TAIL_LOGS=false

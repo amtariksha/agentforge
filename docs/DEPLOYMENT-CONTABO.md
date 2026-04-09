@@ -1,33 +1,81 @@
 # AgentForge — Contabo VPS Deployment Guide
 
+## Architecture Options
+
+AgentForge supports two deployment architectures:
+
+```
+OPTION A: All-in-One (single VPS)       OPTION B: Split (recommended)
+┌────────────────────┐                  ┌─── App VPS ───┐    ┌─── DB VPS ────┐
+│ Fastify app        │                  │ Fastify app    │    │ PostgreSQL 16 │
+│ PostgreSQL+pgvector│                  │ Redis 7        │───→│ + pgvector    │
+│ Redis 7            │                  │ Nginx          │    │ Auto backups  │
+│ Nginx              │                  └────────────────┘    └───────────────┘
+└────────────────────┘
+```
+
+**Option B is recommended** when you have a dedicated DB VPS — better isolation, independent scaling, tuned Postgres settings for your 8GB RAM DB server.
+
 ## Prerequisites
 
-- Contabo VPS with Ubuntu (22.04 or 24.04)
-- SSH access to the server
+- One or two Contabo VPS with Ubuntu (22.04 or 24.04)
+- SSH access
 - Domain name (optional but recommended for HTTPS)
 
 ---
 
-## First-Time Setup (one command)
+## Option B: Split Setup (Dedicated DB Server)
 
-SSH into your server and run:
+### Step 1: Set up the Database VPS first
 
 ```bash
-ssh root@YOUR_CONTABO_IP
+ssh root@DB_SERVER_IP
+
+curl -fsSL https://raw.githubusercontent.com/amtariksha/agentforge/main/scripts/setup-db-server.sh | bash -s -- --app-ip APP_SERVER_IP
+```
+
+Replace `APP_SERVER_IP` with your app server's IP. The script:
+- Installs Docker, starts PostgreSQL 16 + pgvector
+- Opens port 5432 **only** to your app server (firewall)
+- Tunes Postgres for 8GB RAM (2GB shared_buffers, 6GB cache)
+- Sets up daily backups at 2 AM (14-day retention)
+- Prints a `DATABASE_URL` — **copy it**
+
+### Step 2: Set up the App VPS
+
+```bash
+ssh root@APP_SERVER_IP
 
 curl -fsSL https://raw.githubusercontent.com/amtariksha/agentforge/main/scripts/setup-server.sh | bash
 ```
 
-Or if you prefer to review before running:
+Then edit `.env` to set the remote DATABASE_URL:
 
 ```bash
-ssh root@YOUR_CONTABO_IP
-
-git clone https://github.com/amtariksha/agentforge.git /tmp/agentforge
-cat /tmp/agentforge/scripts/setup-server.sh   # review it
-chmod +x /tmp/agentforge/scripts/setup-server.sh
-sudo /tmp/agentforge/scripts/setup-server.sh
+nano /home/agentforge/apps/agentforge/.env
+# Replace the DATABASE_URL line with what the DB setup script printed:
+# DATABASE_URL=postgresql://agentforge:PASSWORD@DB_SERVER_IP:5432/agentforge
 ```
+
+Then redeploy:
+
+```bash
+cd /home/agentforge/apps/agentforge && ./deploy.sh --seed
+```
+
+The setup script auto-detects the remote DB and uses `docker-compose.app.yml` (no local Postgres).
+
+---
+
+## Option A: All-in-One (Single VPS)
+
+```bash
+ssh root@YOUR_VPS_IP
+
+curl -fsSL https://raw.githubusercontent.com/amtariksha/agentforge/main/scripts/setup-server.sh | bash
+```
+
+This runs everything on one server using `docker-compose.prod.yml`.
 
 ### What the setup script does
 
