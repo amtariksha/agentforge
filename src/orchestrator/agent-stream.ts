@@ -31,6 +31,7 @@ import { loadToolsForAgent, executeTool } from '../tools/executor.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 import { estimateCost } from './agent-loop.js';
 import { fireWebhooks } from '../gateway/outbound-webhooks.js';
+import { streamLlm, activeProvider } from './llm-provider.js';
 
 // Slugs of agents whose runs should fire an outbound `agent_run.completed`
 // webhook so the admin panel can post-process. Per integration plan §4.3,
@@ -42,7 +43,6 @@ const log = createChildLogger({ module: 'agent-stream' });
 const MAX_TOOL_ITERATIONS = 10;
 const SYNTHETIC_PLATFORM = 'agent-force';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export type StreamEvent =
   | { type: 'token'; content: string }
@@ -127,13 +127,14 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
 
   // 6. Load tools assigned to this agent
   const toolDefs = await loadToolsForAgent(tenantId, agentSlug);
-  const anthropicTools: Anthropic.Tool[] = toolDefs.map((t) => ({
+  const normalisedTools = toolDefs.map((t) => ({
     name: t.name,
     description: t.description,
-    input_schema: t.parameters as Anthropic.Tool['input_schema'],
+    input_schema: t.parameters as Record<string, unknown>,
   }));
 
   // 7. Streaming tool-use loop
+  const provider = activeProvider();
   const model = agent.modelOverride ?? 'claude-sonnet-4-6';
   let currentMessages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
   let totalInputTokens = 0;
@@ -146,28 +147,21 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
     while (iterations < MAX_TOOL_ITERATIONS) {
       iterations++;
 
-      const stream = anthropic.messages.stream({
+      // LMS agents emit STRICT JSON — keep temperature low so the parser
+      // on the admin side rarely fails.
+      const response = await streamLlm({
         model,
-        max_tokens: 4096,
-        // LMS agents emit STRICT JSON — keep temperature low so the parser
-        // on the admin side rarely fails. Override via modelOverride if a
-        // future agent needs more creativity.
-        temperature: 0.1,
         system: agent.systemPrompt,
         messages: currentMessages,
-        tools: anthropicTools.length > 0 ? anthropicTools : undefined,
+        tools: normalisedTools,
+        temperature: 0.1,
+        maxTokens: 4096,
+        onTextDelta: (delta) => onEvent({ type: 'token', content: delta }),
       });
 
-      // Forward text deltas as SSE tokens
-      stream.on('text', (delta) => {
-        onEvent({ type: 'token', content: delta });
-      });
-
-      const response = await stream.finalMessage();
       totalInputTokens += response.usage.input_tokens;
       totalOutputTokens += response.usage.output_tokens;
-      const usage = response.usage as unknown as Record<string, number>;
-      if ('cache_read_input_tokens' in usage) totalCachedTokens += usage['cache_read_input_tokens'] ?? 0;
+      totalCachedTokens += response.usage.cached_tokens;
 
       // Pull text + tool_use blocks
       const toolUseBlocks = response.content.filter(
@@ -180,7 +174,7 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
         finalText = textBlocks.map((b) => b.text).join('\n');
       }
 
-      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+      if (toolUseBlocks.length === 0 || response.stopReason === 'end_turn') {
         break;
       }
 
@@ -233,13 +227,16 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
       });
     }
 
+    // Cost accounting uses the agent's nominal model (Anthropic pricing).
+    // When running on Gemini the absolute cost is wrong but the relative
+    // shape is preserved, so the daily-cap behavior is still meaningful.
     const costUsd = estimateCost(model, totalInputTokens, totalOutputTokens, totalCachedTokens);
     await db.insert(llmUsageLogs).values({
       tenantId,
       conversationId: conversation.id,
       agentTypeSlug: agentSlug,
       model,
-      provider: 'anthropic',
+      provider,
       tokensInput: totalInputTokens,
       tokensOutput: totalOutputTokens,
       tokensCached: totalCachedTokens,
