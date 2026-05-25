@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, jsonb, integer, real, boolean, timestamp, unique, primaryKey } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, jsonb, integer, real, boolean, timestamp, numeric, unique, primaryKey } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants.js';
 
 export const agentTypes = pgTable('agent_types', {
@@ -16,6 +16,13 @@ export const agentTypes = pgTable('agent_types', {
   isDefault: boolean('is_default').default(false),
   modelOverride: text('model_override'),
   isActive: boolean('is_active').default(true),
+  // Shadow mode — when true, write-category tools return { success: true, dryRun: true }
+  // without side effects. Read tools still execute. Used for 14-day eval window per
+  // integration plan §3 before promoting an agent to live.
+  shadowMode: boolean('shadow_mode').default(false).notNull(),
+  // Per-agent daily USD spend cap. NULL = unlimited. Enforced in agent loop;
+  // hits 429 agent_disabled_budget when day's llmUsageLogs sum >= cap.
+  dailySpendCapUsd: numeric('daily_spend_cap_usd', { precision: 10, scale: 2 }),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   unique('uq_agent_types_tenant_slug').on(table.tenantId, table.slug),

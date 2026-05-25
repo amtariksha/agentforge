@@ -415,6 +415,7 @@ export async function processMessage(
     await db.insert(llmUsageLogs).values({
       tenantId,
       conversationId: conversation.id,
+      agentTypeSlug: agentSlug,
       model,
       provider: 'anthropic',
       tokensInput: totalInputTokens,
@@ -513,7 +514,7 @@ async function resolveConversation(tenantId: string, userId: string, channel: st
   return created;
 }
 
-function estimateCost(model: string, inputTokens: number, outputTokens: number, cachedTokens: number): number {
+export function estimateCost(model: string, inputTokens: number, outputTokens: number, cachedTokens: number): number {
   // Pricing per million tokens (approximate as of 2026)
   const pricing: Record<string, { input: number; output: number; cached: number }> = {
     'claude-sonnet-4-6':  { input: 3.0, output: 15.0, cached: 0.3 },

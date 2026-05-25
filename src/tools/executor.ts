@@ -15,6 +15,18 @@ interface ToolContext {
   userId?: string;
   conversationId?: string;
   agentTypeSlug?: string;
+  /**
+   * Shadow mode: when true, tools with category 'write' are short-circuited
+   * to `{ success: true, data: { dryRun: true } }` without invoking the
+   * handler. Read tools still execute normally. Used during the 14-day
+   * shadow window for new agents.
+   */
+  shadowMode?: boolean;
+  /**
+   * Per-call request id forwarded to admin-panel tool handlers as
+   * X-Agent-Force-Request-Id (idempotency key for writes).
+   */
+  requestId?: string;
 }
 
 // Load tools for a given agent type
@@ -72,6 +84,19 @@ export async function executeTool(
       success: false,
       data: null,
       error: { code: 'TOOL_NOT_FOUND', message: `Tool "${toolName}" not found` },
+      durationMs: Date.now() - startTime,
+    };
+  }
+
+  // Shadow-mode short-circuit for write-category tools. Agent still sees a
+  // successful tool_result so it can produce coherent output, but no side
+  // effects land in downstream systems.
+  if (ctx.shadowMode && tool.category === 'write') {
+    log.info({ tool: toolName, agent: ctx.agentTypeSlug }, 'Shadow mode: write tool short-circuited');
+    return {
+      success: true,
+      data: { dryRun: true, tool: toolName, params },
+      error: undefined,
       durationMs: Date.now() - startTime,
     };
   }

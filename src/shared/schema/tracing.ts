@@ -17,6 +17,10 @@ export const llmUsageLogs = pgTable('llm_usage_logs', {
   id: uuid('id').primaryKey().defaultRandom(),
   tenantId: uuid('tenant_id').references(() => tenants.id).notNull(),
   conversationId: uuid('conversation_id'),
+  // Slug of the agent that drove this LLM call. Nullable for legacy rows and
+  // for calls outside the agent loop (e.g. classification probes). Indexed
+  // with tenantId+createdAt for daily per-agent cost rollups.
+  agentTypeSlug: text('agent_type_slug'),
   model: text('model').notNull(),
   provider: text('provider').notNull(),
   tokensInput: integer('tokens_input'),
@@ -26,4 +30,5 @@ export const llmUsageLogs = pgTable('llm_usage_logs', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   index('idx_llm_usage_tenant').on(table.tenantId, table.createdAt),
+  index('idx_llm_usage_tenant_agent_date').on(table.tenantId, table.agentTypeSlug, table.createdAt),
 ]);

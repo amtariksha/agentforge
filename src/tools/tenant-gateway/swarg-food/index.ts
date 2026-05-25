@@ -1,5 +1,6 @@
 import { registerHandler } from '../registry.js';
 import type { GatewayHandler } from '../registry.js';
+import { registerLmsTools } from './lms-tools.js';
 
 // Stub handlers — return mock data for Phase 1
 // Real DB integration comes in Phase 2
@@ -94,9 +95,13 @@ const cancelSubscription: GatewayHandler = async (params) => {
 };
 
 export function register() {
+  // Legacy demo handlers (still used by the seeded 'support'/'sales' agent types)
   registerHandler('swarg-food.getUserProfile', getUserProfile);
   registerHandler('swarg-food.getSubscription', getSubscription);
   registerHandler('swarg-food.getDeliverySchedule', getDeliverySchedule);
   registerHandler('swarg-food.searchProducts', searchProducts);
   registerHandler('swarg-food.cancelSubscription', cancelSubscription);
+
+  // LMS Phase 1 tool handlers (12 wrappers around the admin panel API)
+  registerLmsTools();
 }

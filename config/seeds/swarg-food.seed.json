@@ -5,14 +5,25 @@
     "config": {
       "persona": {
         "name": "Swarg Assistant",
-        "avatar": { "name": "Swarg", "emoji": "🌿" },
-        "personalityTraits": ["warm", "health-conscious", "knowledgeable"],
+        "avatar": {
+          "name": "Swarg",
+          "emoji": "🌿"
+        },
+        "personalityTraits": [
+          "warm",
+          "health-conscious",
+          "knowledgeable"
+        ],
         "tone": "balanced",
         "definition": "You are Swarg Assistant, the friendly AI helper for Swarg Food — a Bangalore-based healthy food subscription service delivering A2 desi cow milk, traditional healthy products, and fresh meals to 1000+ families.",
         "guidelines": "Always emphasize health benefits of products. Suggest complementary items naturally. Address customers by name when known. Be patient with delivery complaints — acknowledge, apologize, resolve. Never badmouth competitors. Use Hindi/Kannada words naturally if the user speaks those languages.",
         "introduction": "Hello! Welcome to Swarg Food 🌿 I'm here to help you with your healthy food subscriptions, deliveries, and orders. How can I assist you today?",
         "languagePrimary": "en",
-        "languageSupported": ["en", "hi", "kn"],
+        "languageSupported": [
+          "en",
+          "hi",
+          "kn"
+        ],
         "responseStyle": {
           "maxLength": "medium",
           "useEmojis": true,
@@ -38,7 +49,10 @@
         "authType": "api_key",
         "authCredentials": {},
         "userLookupEndpoint": "",
-        "rateLimit": { "requestsPerMinute": 60, "requestsPerHour": 1000 }
+        "rateLimit": {
+          "requestsPerMinute": 60,
+          "requestsPerHour": 1000
+        }
       },
       "ai": {
         "primaryModel": "claude-sonnet-4-6",
@@ -60,10 +74,20 @@
       },
       "hitl": {
         "autoEscalateConfidenceBelow": 0.3,
-        "autoEscalateTopics": ["refund", "legal", "complaint"],
-        "requireApprovalForActions": ["cancel_subscription", "process_refund"],
+        "autoEscalateTopics": [
+          "refund",
+          "legal",
+          "complaint"
+        ],
+        "requireApprovalForActions": [
+          "cancel_subscription",
+          "process_refund"
+        ],
         "maxAutoActionsPerSession": 10,
-        "escalationChannels": ["dashboard", "whatsapp"]
+        "escalationChannels": [
+          "dashboard",
+          "whatsapp"
+        ]
       },
       "orchestrator": {
         "enableAutoRouting": true,
@@ -72,7 +96,12 @@
         "handoffOnLowConfidence": true,
         "handoffOnNegativeSentiment": true,
         "handoffOnUserRequest": true,
-        "handoffKeywords": ["human", "manager", "call me", "talk to person"]
+        "handoffKeywords": [
+          "human",
+          "manager",
+          "call me",
+          "talk to person"
+        ]
       },
       "agents": []
     }
@@ -84,13 +113,36 @@
       "avatarEmoji": "🛟",
       "description": "Handles delivery issues, subscription changes, complaints, account queries",
       "systemPrompt": "You are the support specialist for Swarg Food. Your priority is resolving customer issues quickly and empathetically. For delivery complaints: always check the delivery schedule first, then explain what happened. For subscription changes: confirm the change before executing. Never assume — always verify with the backend.",
-      "intentKeywords": ["delivery", "late", "missing", "complaint", "cancel", "pause", "resume", "address", "change"],
-      "intentExamples": ["My milk didn't arrive today", "I want to pause my subscription", "Change my delivery address"],
+      "intentKeywords": [
+        "delivery",
+        "late",
+        "missing",
+        "complaint",
+        "cancel",
+        "pause",
+        "resume",
+        "address",
+        "change"
+      ],
+      "intentExamples": [
+        "My milk didn't arrive today",
+        "I want to pause my subscription",
+        "Change my delivery address"
+      ],
       "priority": 1,
       "confidenceThreshold": 0.5,
       "isDefault": true,
       "modelOverride": null,
-      "availableTools": ["get_user_profile", "get_subscription", "get_delivery_schedule", "get_order_status", "update_subscription", "update_delivery_address", "register_complaint", "schedule_callback"],
+      "availableTools": [
+        "get_user_profile",
+        "get_subscription",
+        "get_delivery_schedule",
+        "get_order_status",
+        "update_subscription",
+        "update_delivery_address",
+        "register_complaint",
+        "schedule_callback"
+      ],
       "activeHours": null
     },
     {
@@ -99,14 +151,135 @@
       "avatarEmoji": "🛒",
       "description": "Product recommendations, new subscriptions, upselling, pricing queries",
       "systemPrompt": "You are the sales specialist for Swarg Food. Recommend products based on the customer's preferences and order history. Highlight health benefits. Suggest complementary products naturally (e.g., if they order milk, suggest ghee or paneer). Never be pushy. If they're not interested, gracefully acknowledge.",
-      "intentKeywords": ["buy", "price", "product", "subscribe", "new", "recommend", "menu", "catalog", "offer"],
-      "intentExamples": ["What products do you have?", "How much is A2 milk?", "I want to start a subscription"],
+      "intentKeywords": [
+        "buy",
+        "price",
+        "product",
+        "subscribe",
+        "new",
+        "recommend",
+        "menu",
+        "catalog",
+        "offer"
+      ],
+      "intentExamples": [
+        "What products do you have?",
+        "How much is A2 milk?",
+        "I want to start a subscription"
+      ],
       "priority": 2,
       "confidenceThreshold": 0.6,
       "isDefault": false,
       "modelOverride": "claude-haiku-4-5",
-      "availableTools": ["get_user_profile", "search_products", "get_product_details", "get_subscription_plans", "create_subscription", "create_order"],
+      "availableTools": [
+        "get_user_profile",
+        "search_products",
+        "get_product_details",
+        "get_subscription_plans",
+        "create_subscription",
+        "create_order"
+      ],
       "activeHours": null
+    },
+    {
+      "name": "LMS Compliance Guard",
+      "slug": "lms-compliance-guard",
+      "avatarEmoji": "🛡️",
+      "description": "Pre-send check on every campaign + journey message. Hard-blocks DPDP / FSSAI / ASCI violations.",
+      "systemPrompt": "You are Compliance Guard for Swarg Food's marketing system.\n\nFor every message you review, return STRICT JSON of the form:\n  { \"verdict\": \"pass\" | \"warn\" | \"block\",\n    \"reasons\": [<short string>, ...],\n    \"removed_recipient_count\": <int> }\n\nApply ALL of these rules:\n\n1. DPDP Act 2023 / Rules 2025\n   - The message must NOT be sent to a recipient whose consent for the\n     stated purpose is granted=false in the latest consent row.\n   - Marketing messages must include a clear opt-out path.\n\n2. FSSAI claim rules\n   - Reject health claims like \"cures\", \"treats\", \"prevents\", \"boosts immunity\",\n     \"scientifically proven\". Ayurvedic claims are limited to verbs like\n     \"supports\" or \"may help\" — never \"cures\".\n\n3. ASCI guidelines\n   - Reject unsubstantiated superlatives: \"best\", \"purest\", \"100%\", \"world's #1\"\n     unless followed by citation or qualifier.\n\n4. WhatsApp policy\n   - Template category must match content: MARKETING required for promotional\n     content; UTILITY only for genuine transactional.\n   - If template category is UTILITY but content includes price, discount, offer\n     — block.\n\n5. Frequency cap\n   - If any recipient received a campaign in the past 7 days, remove them and\n     report the count in removed_recipient_count.\n\nTools available (call only when the payload does not already contain the info):\n  • read_consent_state(customerId) — current consent for a customer. Call for\n    each recipient when the payload doesn't include their consent state.\n  • read_campaign_history(customerId, days) — campaigns sent to a customer in\n    the last N days. Call when enforcing the 7-day frequency cap and the\n    payload omits send history.\n  • read_template_registry(category?) — Meta-approved templates and their\n    categories. Call when the template category isn't supplied in the payload.\n  • write_compliance_decision(campaignId, verdict, reasons, removedRecipientIds?)\n    — log the verdict for audit. Always call at the end with your verdict.\n\nOutput ONLY the JSON object. No prose around it.",
+      "intentKeywords": [
+        "send",
+        "publish",
+        "broadcast",
+        "campaign",
+        "review",
+        "compliance"
+      ],
+      "intentExamples": [
+        "Check this campaign before sending",
+        "Is this template compliant?",
+        "Review opt-out coverage"
+      ],
+      "priority": 100,
+      "confidenceThreshold": 0.7,
+      "isDefault": false,
+      "modelOverride": "claude-sonnet-4-6",
+      "shadowMode": false,
+      "dailySpendCapUsd": 5.0
+    },
+    {
+      "name": "LMS Insights",
+      "slug": "lms-insights",
+      "avatarEmoji": "💡",
+      "description": "Nightly batch — produces the AI-flagged actions feed on the Today screen.",
+      "systemPrompt": "You are Swarg Food's Insights agent. You run nightly and produce up\nto 5 high-value action recommendations for the operator (Pradeep).\n\nYour input is a JSON snapshot containing:\n  - RFM segment counts\n  - Churn-risk distribution\n  - Customers approaching replenishment threshold (per SKU)\n  - Recent opt-out spike (if any)\n  - Festival calendar — events within 30 days\n\nFor each recommendation, output:\n  { \"kind\": \"replenishment_due\" | \"churn_risk_spike\" | \"opportunity\" | \"anomaly\",\n    \"title\": <short headline, max 80 chars>,\n    \"body\": <one or two sentences explaining the action>,\n    \"cta_action\": { \"type\": <action type>, \"...\": <params> },\n    \"priority\": 1-5 (1 = lowest, 5 = highest),\n    \"expires_in_hours\": <int> }\n\nTools available:\n  • read_rfm_score(customerId) — fetch a specific customer's RFM details when\n    drilling into a flagged segment.\n  • read_health_score(customerId) — churn risk + next-best action for one\n    customer. Use to verify before flagging a churn_risk_spike.\n  • read_campaign_history(customerId, days) — recent campaign exposure.\n  • write_insights_feed(kind, title, body, ctaAction, priority, expiresInHours)\n    — write each recommendation. Call once per recommendation, maximum 5 calls.\n\nAfter writing the recommendations, return a JSON array of the recs you wrote\n(same shape as the input above). Avoid duplicates with what you flagged\nyesterday (I will tell you the previous day's flags in the input). Return\nONLY the JSON array — no prose.",
+      "intentKeywords": [
+        "insights",
+        "today",
+        "recommendation",
+        "action",
+        "flag"
+      ],
+      "intentExamples": [
+        "What should I do today?",
+        "Show me churn risks",
+        "Generate today's insights"
+      ],
+      "priority": 90,
+      "confidenceThreshold": 0.7,
+      "isDefault": false,
+      "modelOverride": "claude-sonnet-4-6",
+      "shadowMode": true,
+      "dailySpendCapUsd": 3.0
+    },
+    {
+      "name": "LMS Lead Triage",
+      "slug": "lms-lead-triage",
+      "avatarEmoji": "🚦",
+      "description": "Classifies inbound WhatsApp / web-form messages — routes leads, escalates complaints, honours STOP keywords.",
+      "systemPrompt": "You are Swarg Food's Lead Triage agent. For every inbound message,\nclassify the intent and act accordingly. Output STRICT JSON:\n\n  { \"intent\": \"new_lead\" | \"existing_customer\" | \"complaint\" | \"product_question\"\n              | \"opt_out\" | \"spam\" | \"unclassified\",\n    \"confidence\": 0.0-1.0,\n    \"extracted\": { \"name\"?, \"pincode\"?, \"interest\"? },\n    \"actions_taken\": [ <action object>, ... ] }\n\nTools available (call these to execute actions, then report what you did in\nactions_taken):\n  • write_lead(source, phone?, name?, pincode?, interest?, notes?, data?) —\n    create a lead row.\n  • write_consent_withdrawal(customerId, purposes[], source) — record an opt-out.\n  • write_inbox_message(conversationId, body, kind: \"auto_reply\"|\"internal_note\")\n    — drop an auto-confirmation or internal note in the conversation.\n  • read_recent_messages(customerId, limit?) — look up prior context for a\n    sender before classifying.\n\nRules:\n  1. OPT-OUT KEYWORDS PROCESSED FIRST (defence-in-depth for DPDP):\n     STOP, UNSUBSCRIBE, STOP ALL, REMOVE, OFF, OPT OUT, BAN,\n     plus their Hindi (Rukja, Band karo) and Kannada (Nillisi, Band madi) equivalents,\n     case-insensitive. Match → intent: \"opt_out\", call write_consent_withdrawal,\n     then call write_inbox_message with an auto_reply confirming the opt-out.\n  2. Complaint keywords (wrong order, refund, broken, spoiled, bad, kharab,\n     hāḷāgide, kettedu) → intent: \"complaint\", do NOT auto-reply, surface to\n     human inbox via write_inbox_message kind=internal_note.\n  3. New leads → call write_lead.\n  4. If you can't classify with >= 70% confidence → intent: \"unclassified\",\n     do not call any write tool.\n\nOutput the JSON object only.",
+      "intentKeywords": [
+        "new lead",
+        "stop",
+        "unsubscribe",
+        "complaint",
+        "refund",
+        "inquiry"
+      ],
+      "intentExamples": [
+        "STOP",
+        "Hi, I want to try your A2 milk",
+        "My order was wrong"
+      ],
+      "priority": 95,
+      "confidenceThreshold": 0.7,
+      "isDefault": false,
+      "modelOverride": "claude-haiku-4-5",
+      "shadowMode": true,
+      "dailySpendCapUsd": 2.0
+    },
+    {
+      "name": "LMS Customer Support Assist",
+      "slug": "lms-customer-support-assist",
+      "avatarEmoji": "🤝",
+      "description": "Drafts 1-3 reply suggestions for the CS team in the Inbox UI. Never sends autonomously.",
+      "systemPrompt": "You assist Swarg Food's Customer Support team. For every conversation\nthe CS agent opens, you produce 1-3 reply suggestions.\n\nOutput STRICT JSON:\n  { \"suggestions\": [\n      { \"text\": \"<draft reply>\", \"tone\": \"factual\" | \"empathetic\" | \"upsell\",\n        \"confidence\": 0.0-1.0 }, ... ],\n    \"do_not_send_alone\": true | false }\n\nTools available (call as needed to pull context before drafting):\n  • read_order_history(customerId, days?) — recent orders + statuses.\n  • read_recent_messages(customerId, limit?) — last N messages in this thread.\n  • read_health_score(customerId) — churn risk + next-best action; useful for\n    deciding whether a tone of \"upsell\" is appropriate (skip upsell for\n    high-churn-risk customers).\n\nRules:\n  1. If the conversation involves a refund commitment over ₹2000, an\n     allegation of food contamination, or anything tagged \"sensitive\" by\n     Triage — set do_not_send_alone: true and only suggest empathetic\n     acknowledgements, NOT resolution. Final reply must be human-authored.\n  2. For order-status questions: pull the latest order from context and\n     give a factual reply with date, ETA, and tracking info if present.\n  3. For product questions: cite the FAQ entry or product description.\n     Never invent specs.\n  4. Match the customer's language (English / Hindi / Kannada). If unsure,\n     default to English with a polite Indian register.\n  5. Never offer refunds beyond store policy; never promise compensation\n     not approved by Pradeep.\n\nOutput the JSON object only.",
+      "intentKeywords": [
+        "suggest",
+        "draft reply",
+        "assist",
+        "reply"
+      ],
+      "intentExamples": [
+        "Suggest a reply",
+        "What should I say?"
+      ],
+      "priority": 85,
+      "confidenceThreshold": 0.7,
+      "isDefault": false,
+      "modelOverride": "claude-sonnet-4-6",
+      "shadowMode": false,
+      "dailySpendCapUsd": 3.0
     }
   ],
   "tools": [
@@ -120,16 +293,37 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "phone": { "type": "string", "description": "Customer phone number" }
+            "phone": {
+              "type": "string",
+              "description": "Customer phone number"
+            }
           },
-          "required": ["phone"]
+          "required": [
+            "phone"
+          ]
         },
-        "backendMapping": { "type": "internal", "handler": "swarg-food.getUserProfile" },
-        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't retrieve your account details right now. Let me try again." },
-        "permissions": { "agentTypes": ["support", "sales"], "requiresUserAuth": false },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.getUserProfile"
+        },
+        "execution": {
+          "timeoutMs": 5000,
+          "retryCount": 1,
+          "fallbackMessage": "I couldn't retrieve your account details right now. Let me try again."
+        },
+        "permissions": {
+          "agentTypes": [
+            "support",
+            "sales"
+          ],
+          "requiresUserAuth": false
+        },
         "isActive": true
       },
-      "assignToAgents": ["support", "sales"]
+      "assignToAgents": [
+        "support",
+        "sales"
+      ]
     },
     {
       "definition": {
@@ -141,17 +335,41 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "phone": { "type": "string", "description": "Customer phone number" },
-            "subscription_id": { "type": "string", "description": "Optional specific subscription ID" }
+            "phone": {
+              "type": "string",
+              "description": "Customer phone number"
+            },
+            "subscription_id": {
+              "type": "string",
+              "description": "Optional specific subscription ID"
+            }
           },
-          "required": ["phone"]
+          "required": [
+            "phone"
+          ]
         },
-        "backendMapping": { "type": "internal", "handler": "swarg-food.getSubscription" },
-        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't retrieve your subscription details right now." },
-        "permissions": { "agentTypes": ["support", "sales"], "requiresUserAuth": false },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.getSubscription"
+        },
+        "execution": {
+          "timeoutMs": 5000,
+          "retryCount": 1,
+          "fallbackMessage": "I couldn't retrieve your subscription details right now."
+        },
+        "permissions": {
+          "agentTypes": [
+            "support",
+            "sales"
+          ],
+          "requiresUserAuth": false
+        },
         "isActive": true
       },
-      "assignToAgents": ["support", "sales"]
+      "assignToAgents": [
+        "support",
+        "sales"
+      ]
     },
     {
       "definition": {
@@ -163,17 +381,39 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "phone": { "type": "string", "description": "Customer phone number" },
-            "date": { "type": "string", "description": "Date in YYYY-MM-DD format. Defaults to today." }
+            "phone": {
+              "type": "string",
+              "description": "Customer phone number"
+            },
+            "date": {
+              "type": "string",
+              "description": "Date in YYYY-MM-DD format. Defaults to today."
+            }
           },
-          "required": ["phone"]
+          "required": [
+            "phone"
+          ]
         },
-        "backendMapping": { "type": "internal", "handler": "swarg-food.getDeliverySchedule" },
-        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't check your delivery schedule right now." },
-        "permissions": { "agentTypes": ["support"], "requiresUserAuth": false },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.getDeliverySchedule"
+        },
+        "execution": {
+          "timeoutMs": 5000,
+          "retryCount": 1,
+          "fallbackMessage": "I couldn't check your delivery schedule right now."
+        },
+        "permissions": {
+          "agentTypes": [
+            "support"
+          ],
+          "requiresUserAuth": false
+        },
         "isActive": true
       },
-      "assignToAgents": ["support"]
+      "assignToAgents": [
+        "support"
+      ]
     },
     {
       "definition": {
@@ -185,17 +425,37 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "query": { "type": "string", "description": "Search term" },
-            "category": { "type": "string", "description": "Product category filter" }
+            "query": {
+              "type": "string",
+              "description": "Search term"
+            },
+            "category": {
+              "type": "string",
+              "description": "Product category filter"
+            }
           },
           "required": []
         },
-        "backendMapping": { "type": "internal", "handler": "swarg-food.searchProducts" },
-        "execution": { "timeoutMs": 5000, "retryCount": 1, "fallbackMessage": "I couldn't search products right now." },
-        "permissions": { "agentTypes": ["sales"], "requiresUserAuth": false },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.searchProducts"
+        },
+        "execution": {
+          "timeoutMs": 5000,
+          "retryCount": 1,
+          "fallbackMessage": "I couldn't search products right now."
+        },
+        "permissions": {
+          "agentTypes": [
+            "sales"
+          ],
+          "requiresUserAuth": false
+        },
         "isActive": true
       },
-      "assignToAgents": ["sales"]
+      "assignToAgents": [
+        "sales"
+      ]
     },
     {
       "definition": {
@@ -207,24 +467,683 @@
         "parameters": {
           "type": "object",
           "properties": {
-            "subscription_id": { "type": "string", "description": "Subscription ID to cancel" },
-            "reason": { "type": "string", "description": "Reason for cancellation" }
+            "subscription_id": {
+              "type": "string",
+              "description": "Subscription ID to cancel"
+            },
+            "reason": {
+              "type": "string",
+              "description": "Reason for cancellation"
+            }
           },
-          "required": ["subscription_id", "reason"]
+          "required": [
+            "subscription_id",
+            "reason"
+          ]
         },
-        "backendMapping": { "type": "internal", "handler": "swarg-food.cancelSubscription" },
-        "execution": { "timeoutMs": 10000, "retryCount": 0, "fallbackMessage": "I couldn't process the cancellation. Let me connect you with our team." },
-        "permissions": { "agentTypes": ["support"], "requiresUserAuth": true },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.cancelSubscription"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "I couldn't process the cancellation. Let me connect you with our team."
+        },
+        "permissions": {
+          "agentTypes": [
+            "support"
+          ],
+          "requiresUserAuth": true
+        },
         "isActive": true
       },
-      "assignToAgents": ["support"]
+      "assignToAgents": [
+        "support"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_consent_state",
+        "description": "Look up the current consent state for a customer (DPDP). Returns a map keyed by purpose with granted/withdrawnAt fields.",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_consent_state"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-compliance-guard",
+            "lms-lead-triage"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-compliance-guard",
+        "lms-lead-triage"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_rfm_score",
+        "description": "Fetch a customer's RFM segment and component scores. Returns null if not yet computed.",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_rfm_score"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-insights",
+            "lms-customer-support-assist"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-insights",
+        "lms-customer-support-assist"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_health_score",
+        "description": "Fetch a customer's churn risk and next-best action. Returns null if not computed.",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_health_score"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-insights",
+            "lms-customer-support-assist"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-insights",
+        "lms-customer-support-assist"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_campaign_history",
+        "description": "List campaign messages sent to a customer in the last N days (default 7). Used for the frequency cap and exposure analytics.",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 7
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_campaign_history"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-compliance-guard",
+            "lms-insights"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-compliance-guard",
+        "lms-insights"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_template_registry",
+        "description": "List Meta-approved WhatsApp templates with their category (MARKETING / UTILITY / AUTHENTICATION).",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "category": {
+              "type": "string",
+              "enum": [
+                "MARKETING",
+                "UTILITY",
+                "AUTHENTICATION"
+              ]
+            }
+          }
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_template_registry"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-compliance-guard"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-compliance-guard"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_recent_messages",
+        "description": "Pull the last N messages from a customer's conversation thread (default 20).",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            },
+            "limit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 20
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_recent_messages"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-lead-triage",
+            "lms-customer-support-assist"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-lead-triage",
+        "lms-customer-support-assist"
+      ]
+    },
+    {
+      "definition": {
+        "name": "read_order_history",
+        "description": "Customer's order history with status + ETAs for the last N days (default 30).",
+        "category": "read",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            },
+            "days": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365,
+              "default": 30
+            }
+          },
+          "required": [
+            "customerId"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.read_order_history"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-customer-support-assist",
+            "lms-insights"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-customer-support-assist",
+        "lms-insights"
+      ]
+    },
+    {
+      "definition": {
+        "name": "write_insights_feed",
+        "description": "Write one recommendation row to lms_insights_feed. Call once per recommendation.",
+        "category": "write",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "replenishment_due",
+                "churn_risk_spike",
+                "opportunity",
+                "anomaly"
+              ]
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "body": {
+              "type": "string"
+            },
+            "ctaAction": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "priority": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            },
+            "expiresInHours": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 720,
+              "default": 48
+            }
+          },
+          "required": [
+            "kind",
+            "title",
+            "priority"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.write_insights_feed"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-insights"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-insights"
+      ]
+    },
+    {
+      "definition": {
+        "name": "write_lead",
+        "description": "Create a lead row in app_lms.lms_leads with dedup by phone.",
+        "category": "write",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "whatsapp",
+                "website_form",
+                "manual",
+                "referral"
+              ]
+            },
+            "phone": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pincode": {
+              "type": "string"
+            },
+            "interest": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "data": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "source"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.write_lead"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-lead-triage"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-lead-triage"
+      ]
+    },
+    {
+      "definition": {
+        "name": "write_inbox_message",
+        "description": "Append an auto_reply or internal_note to a conversation. Auto-replies go out via the WhatsApp gateway on the admin side.",
+        "category": "write",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "conversationId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "body": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "auto_reply",
+                "internal_note"
+              ]
+            }
+          },
+          "required": [
+            "conversationId",
+            "body",
+            "kind"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.write_inbox_message"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-lead-triage",
+            "lms-customer-support-assist"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-lead-triage",
+        "lms-customer-support-assist"
+      ]
+    },
+    {
+      "definition": {
+        "name": "write_consent_withdrawal",
+        "description": "Record an opt-out / consent withdrawal for one or more purposes (DPDP).",
+        "category": "write",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "customerId": {
+              "type": "string",
+              "format": "uuid",
+              "description": "Swarg customer UUID"
+            },
+            "purposes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 1
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "stop_keyword",
+                "web_form",
+                "manual",
+                "unsubscribe_link"
+              ]
+            }
+          },
+          "required": [
+            "customerId",
+            "purposes",
+            "source"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.write_consent_withdrawal"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-lead-triage"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-lead-triage"
+      ]
+    },
+    {
+      "definition": {
+        "name": "write_compliance_decision",
+        "description": "Log a compliance verdict against a campaign for audit. Called by Compliance Guard at the end of every review.",
+        "category": "write",
+        "requiresHitl": false,
+        "requiresUserConfirm": false,
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "campaignId": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "verdict": {
+              "type": "string",
+              "enum": [
+                "pass",
+                "warn",
+                "block"
+              ]
+            },
+            "reasons": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "removedRecipientIds": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              }
+            }
+          },
+          "required": [
+            "campaignId",
+            "verdict",
+            "reasons"
+          ]
+        },
+        "backendMapping": {
+          "type": "internal",
+          "handler": "swarg-food.write_compliance_decision"
+        },
+        "execution": {
+          "timeoutMs": 10000,
+          "retryCount": 0,
+          "fallbackMessage": "Couldn't reach the admin backend — please retry."
+        },
+        "permissions": {
+          "agentTypes": [
+            "lms-compliance-guard"
+          ],
+          "requiresUserAuth": false
+        },
+        "isActive": true
+      },
+      "assignToAgents": [
+        "lms-compliance-guard"
+      ]
     }
   ],
   "guardrails": [
     {
       "name": "Block competitor mentions in output",
       "ruleType": "keyword_block",
-      "config": { "keywords": ["milkbasket", "supr daily", "bigbasket", "country delight", "amul app"], "caseSensitive": false },
+      "config": {
+        "keywords": [
+          "milkbasket",
+          "supr daily",
+          "bigbasket",
+          "country delight",
+          "amul app"
+        ],
+        "caseSensitive": false
+      },
       "action": "redact",
       "appliesTo": "output",
       "priority": 1,
@@ -233,7 +1152,13 @@
     {
       "name": "PII protection",
       "ruleType": "pii_detection",
-      "config": { "detect": ["aadhaar", "pan_card", "credit_card"] },
+      "config": {
+        "detect": [
+          "aadhaar",
+          "pan_card",
+          "credit_card"
+        ]
+      },
       "action": "redact",
       "appliesTo": "both",
       "priority": 0,
@@ -241,13 +1166,28 @@
     }
   ],
   "humanAgents": [
-    { "name": "Pradeep", "email": "pradeep@swargfood.com", "role": "admin", "password": "changeme123" },
-    { "name": "Swarg Support", "email": "support@swargfood.com", "role": "operator", "password": "changeme123" }
+    {
+      "name": "Pradeep",
+      "email": "pradeep@swargfood.com",
+      "role": "admin",
+      "password": "changeme123"
+    },
+    {
+      "name": "Swarg Support",
+      "email": "support@swargfood.com",
+      "role": "operator",
+      "password": "changeme123"
+    }
   ],
   "webhookConfigs": [
     {
       "url": "https://wacrm.amtariksha.com/webhooks/agentforge",
-      "events": ["lead_captured", "ticket_created", "handoff_triggered", "conversation_closed"]
+      "events": [
+        "lead_captured",
+        "ticket_created",
+        "handoff_triggered",
+        "conversation_closed"
+      ]
     }
   ]
 }

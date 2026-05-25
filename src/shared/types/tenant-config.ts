@@ -116,6 +116,9 @@ export interface AgentTypeConfig {
   confidenceThreshold: number;
   isDefault: boolean;
   modelOverride?: string | null;
-  availableTools: string[];
+  availableTools?: string[];
   activeHours?: { start: string; end: string; timezone: string } | null;
+  /** Phase-1 LMS integration — see src/shared/schema/agents.ts. */
+  shadowMode?: boolean;
+  dailySpendCapUsd?: number | string | null;
 }

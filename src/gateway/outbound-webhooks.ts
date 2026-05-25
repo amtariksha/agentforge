@@ -13,7 +13,8 @@ export type WebhookEvent =
   | 'handoff_triggered'
   | 'order_placed'
   | 'correction_applied'
-  | 'lead_captured';
+  | 'lead_captured'
+  | 'agent_run.completed';
 
 interface WebhookPayload {
   event: WebhookEvent;

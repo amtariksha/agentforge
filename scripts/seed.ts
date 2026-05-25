@@ -71,37 +71,31 @@ async function seedTenant(seed: TenantSeed) {
       .where(and(eq(agentTypes.tenantId, tenantId), eq(agentTypes.slug, agent.slug)))
       .limit(1);
 
+    const agentRow = {
+      name: agent.name,
+      avatarEmoji: agent.avatarEmoji,
+      description: agent.description,
+      systemPrompt: agent.systemPrompt,
+      intentKeywords: agent.intentKeywords,
+      intentExamples: agent.intentExamples,
+      priority: agent.priority,
+      confidenceThreshold: agent.confidenceThreshold,
+      isDefault: agent.isDefault,
+      modelOverride: agent.modelOverride ?? null,
+      shadowMode: agent.shadowMode ?? false,
+      dailySpendCapUsd: agent.dailySpendCapUsd != null ? String(agent.dailySpendCapUsd) : null,
+    };
     if (existing) {
       await db.update(agentTypes)
-        .set({
-          name: agent.name,
-          avatarEmoji: agent.avatarEmoji,
-          description: agent.description,
-          systemPrompt: agent.systemPrompt,
-          intentKeywords: agent.intentKeywords,
-          intentExamples: agent.intentExamples,
-          priority: agent.priority,
-          confidenceThreshold: agent.confidenceThreshold,
-          isDefault: agent.isDefault,
-          modelOverride: agent.modelOverride ?? null,
-        })
+        .set(agentRow)
         .where(eq(agentTypes.id, existing.id));
       agentIdMap.set(agent.slug, existing.id);
       console.log(`  Updated agent type: ${agent.slug}`);
     } else {
       const [created] = await db.insert(agentTypes).values({
         tenantId,
-        name: agent.name,
         slug: agent.slug,
-        avatarEmoji: agent.avatarEmoji,
-        description: agent.description,
-        systemPrompt: agent.systemPrompt,
-        intentKeywords: agent.intentKeywords,
-        intentExamples: agent.intentExamples,
-        priority: agent.priority,
-        confidenceThreshold: agent.confidenceThreshold,
-        isDefault: agent.isDefault,
-        modelOverride: agent.modelOverride ?? null,
+        ...agentRow,
       }).returning();
       agentIdMap.set(agent.slug, created.id);
       console.log(`  Created agent type: ${agent.slug}`);
