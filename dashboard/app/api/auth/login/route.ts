@@ -2,20 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
 const API_URL = process.env.API_URL ?? "http://localhost:3000";
+const TENANT_SLUG_LOCK = process.env.NEXT_PUBLIC_TENANT_SLUG_LOCK;
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const body = (await request.json()) as Record<string, unknown>;
 
   try {
     const response = await fetch(`${API_URL}/admin/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      // In sub-portal deployments, force tenantSlug so users from other
+      // tenants can't authenticate here even if they hit this URL.
+      body: JSON.stringify({
+        ...body,
+        ...(TENANT_SLUG_LOCK ? { tenantSlug: TENANT_SLUG_LOCK } : {}),
+      }),
     });
 
     if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
       return NextResponse.json(
-        { success: false, error: "Invalid credentials" },
+        { success: false, error: (err as { error?: string }).error ?? "Invalid credentials" },
         { status: 401 },
       );
     }

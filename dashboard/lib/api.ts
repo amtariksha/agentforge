@@ -2,25 +2,29 @@ import { cookies } from "next/headers";
 
 const API_URL = process.env.API_URL ?? "http://localhost:3000";
 
-async function getToken(): Promise<string | undefined> {
+async function getAuthHeaders(): Promise<Record<string, string>> {
   const cookieStore = await cookies();
-  return cookieStore.get("af_token")?.value;
+  const headers: Record<string, string> = {};
+  const token = cookieStore.get("af_token")?.value;
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  // Send the super-admin's active-tenant override; the server ignores this
+  // for non-super-admin tokens (enforced in src/shared/middleware/auth.ts).
+  const activeTenant = cookieStore.get("af_active_tenant_id")?.value;
+  if (activeTenant) headers["X-Active-Tenant-Id"] = activeTenant;
+  return headers;
 }
 
 export async function api<T = unknown>(
   path: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const token = await getToken();
+  const authHeaders = await getAuthHeaders();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    ...authHeaders,
     ...(options.headers as Record<string, string>),
   };
-
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
-  }
 
   const response = await fetch(`${API_URL}${path}`, {
     ...options,

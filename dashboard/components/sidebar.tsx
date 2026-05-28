@@ -4,8 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  superAdminOnly?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: "/", label: "Overview", icon: "📊" },
+  { href: "/tenants", label: "Tenants", icon: "🏢", superAdminOnly: true },
   { href: "/conversations", label: "Conversations", icon: "💬" },
   { href: "/tickets", label: "Tickets", icon: "🎫" },
   { href: "/live-chat", label: "Live Chat", icon: "🔴" },
@@ -21,8 +29,13 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  isSuperAdmin?: boolean;
+}
+
+export function Sidebar({ isSuperAdmin = false }: SidebarProps) {
   const pathname = usePathname();
+  const items = navItems.filter((item) => !item.superAdminOnly || isSuperAdmin);
 
   return (
     <aside className="flex h-full w-56 flex-col border-r border-border bg-card">
@@ -33,7 +46,7 @@ export function Sidebar() {
       </div>
       <nav className="flex-1 overflow-y-auto p-2">
         <ul className="space-y-0.5">
-          {navItems.map((item) => {
+          {items.map((item) => {
             const isActive =
               item.href === "/"
                 ? pathname === "/"

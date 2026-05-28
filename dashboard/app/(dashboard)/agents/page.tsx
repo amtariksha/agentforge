@@ -1,6 +1,8 @@
+import Link from "next/link";
 import { api } from "@/lib/api";
-import { cookies } from "next/headers";
+import { getActiveTenantId } from "@/lib/tenant";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AgentType {
@@ -14,17 +16,12 @@ interface AgentType {
   isDefault: boolean | null;
   modelOverride: string | null;
   isActive: boolean | null;
-}
-
-async function getTenantId() {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get("af_user")?.value;
-  if (!raw) return null;
-  try { return (JSON.parse(raw) as { tenantId?: string }).tenantId ?? null; } catch { return null; }
+  shadowMode: boolean | null;
+  dailySpendCapUsd: string | null;
 }
 
 export default async function AgentTypesPage() {
-  const tenantId = await getTenantId();
+  const tenantId = await getActiveTenantId();
   let agents: AgentType[] = [];
 
   if (tenantId) {
@@ -33,7 +30,12 @@ export default async function AgentTypesPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-medium tracking-tight">Agent Types</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-medium tracking-tight">Agent Types</h1>
+        <Link href="/agents/new">
+          <Button>Create Agent</Button>
+        </Link>
+      </div>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {agents.length === 0 ? (
           <Card className="col-span-full">
@@ -45,10 +47,12 @@ export default async function AgentTypesPage() {
           agents.map((agent) => (
             <Card key={agent.id}>
               <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xl">{agent.avatarEmoji ?? "🤖"}</span>
                   <CardTitle className="text-base">{agent.name}</CardTitle>
                   {agent.isDefault && <Badge variant="secondary">Default</Badge>}
+                  {agent.shadowMode && <Badge variant="secondary">Shadow</Badge>}
+                  {!agent.isActive && <Badge variant="secondary">Inactive</Badge>}
                 </div>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
@@ -60,6 +64,9 @@ export default async function AgentTypesPage() {
                   </span>
                   {agent.modelOverride && (
                     <span className="font-mono text-muted-foreground">model: {agent.modelOverride}</span>
+                  )}
+                  {agent.dailySpendCapUsd && (
+                    <span className="font-mono text-muted-foreground">cap: ${agent.dailySpendCapUsd}/day</span>
                   )}
                 </div>
               </CardContent>

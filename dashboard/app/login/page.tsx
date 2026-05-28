@@ -13,6 +13,8 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+const TENANT_SLUG_LOCK = process.env.NEXT_PUBLIC_TENANT_SLUG_LOCK;
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -49,7 +51,11 @@ export default function LoginPage() {
           <CardTitle className="text-2xl font-medium tracking-tight">
             AgentForge
           </CardTitle>
-          <CardDescription>Sign in to the admin dashboard</CardDescription>
+          <CardDescription>
+            {TENANT_SLUG_LOCK
+              ? `Sign in to the ${TENANT_SLUG_LOCK} admin panel`
+              : "Sign in to the admin dashboard"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

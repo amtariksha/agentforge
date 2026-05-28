@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { db } from '../../shared/db.js';
-import { humanAgents } from '../../shared/schema/index.js';
+import { humanAgents, tenants } from '../../shared/schema/index.js';
 import { loginSchema, refreshTokenSchema } from '../../shared/validators/index.js';
 import { signToken, signRefreshToken, verifyToken, authMiddleware } from '../../shared/middleware/auth.js';
 import type { JwtPayload } from '../../shared/middleware/auth.js';
@@ -11,9 +11,32 @@ export async function authRoutes(app: FastifyInstance) {
   app.post('/admin/auth/login', async (request, reply) => {
     const body = loginSchema.parse(request.body);
 
+    // Resolve slug → tenantId for sub-portal deployments.
+    let scopedTenantId = body.tenantId;
+    if (body.tenantSlug && !scopedTenantId) {
+      const [t] = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.slug, body.tenantSlug))
+        .limit(1);
+      if (!t) {
+        return reply.status(401).send({ error: 'Invalid credentials' });
+      }
+      scopedTenantId = t.id;
+    } else if (body.tenantSlug && scopedTenantId) {
+      const [t] = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.slug, body.tenantSlug))
+        .limit(1);
+      if (!t || t.id !== scopedTenantId) {
+        return reply.status(401).send({ error: 'Tenant mismatch' });
+      }
+    }
+
     const conditions = [eq(humanAgents.email, body.email), eq(humanAgents.isActive, true)];
-    if (body.tenantId) {
-      conditions.push(eq(humanAgents.tenantId, body.tenantId));
+    if (scopedTenantId) {
+      conditions.push(eq(humanAgents.tenantId, scopedTenantId));
     }
 
     const [agent] = await db

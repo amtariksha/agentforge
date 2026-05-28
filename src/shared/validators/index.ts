@@ -5,6 +5,10 @@ export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   tenantId: z.string().uuid().optional(),
+  // Alternative to tenantId — useful for sub-portal deployments that know
+  // the tenant by slug but not by uuid. Mutually exclusive with tenantId
+  // when both are present (slug is resolved to id and must match).
+  tenantSlug: z.string().min(1).optional(),
 });
 
 export const refreshTokenSchema = z.object({
