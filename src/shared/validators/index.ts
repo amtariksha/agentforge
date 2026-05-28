@@ -37,7 +37,12 @@ export const createAgentTypeSchema = z.object({
   confidenceThreshold: z.number().min(0).max(1).default(0.7),
   isDefault: z.boolean().default(false),
   modelOverride: z.string().nullable().optional(),
+  shadowMode: z.boolean().default(false),
+  // Accept number (UI) or string (DB numeric type) or null (unlimited).
+  dailySpendCapUsd: z.union([z.number().nonnegative(), z.string()]).nullable().optional(),
 });
+
+export const updateAgentTypeSchema = createAgentTypeSchema.partial();
 
 // Tools
 export const createToolSchema = z.object({
@@ -115,7 +120,7 @@ export const createHumanAgentSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   phone: z.string().optional(),
-  role: z.enum(['admin', 'operator', 'viewer']).default('operator'),
+  role: z.enum(['super_admin', 'admin', 'operator', 'viewer']).default('operator'),
   maxConcurrentChats: z.number().int().min(1).max(20).default(5),
   skills: z.array(z.string()).default([]),
 });

@@ -1,0 +1,82 @@
+{
+  "tenant": {
+    "name": "Platform",
+    "slug": "platform",
+    "config": {
+      "persona": {
+        "name": "Platform Owner",
+        "avatar": { "name": "Platform", "emoji": "🛠️" },
+        "personalityTraits": ["operational"],
+        "tone": "formal",
+        "definition": "Internal platform tenant — home tenant for super_admin users who manage other tenants.",
+        "guidelines": "This tenant is not customer-facing. Agents and conversations here are for platform operations only.",
+        "introduction": "",
+        "languagePrimary": "en",
+        "languageSupported": ["en"],
+        "responseStyle": {
+          "maxLength": "short",
+          "useEmojis": false,
+          "useMarkdown": true,
+          "formattingRules": "Plain operational responses."
+        },
+        "fallbackMessage": "Platform operations only — no end-user routing here.",
+        "systemPromptAdditions": ""
+      },
+      "channels": {},
+      "backend": {
+        "baseUrl": "",
+        "authType": "api_key",
+        "authCredentials": {},
+        "userLookupEndpoint": "",
+        "rateLimit": { "requestsPerMinute": 60, "requestsPerHour": 1000 }
+      },
+      "ai": {
+        "primaryModel": "claude-sonnet-4-6",
+        "premiumModel": "claude-opus-4-6",
+        "routingModel": "claude-haiku-4-5",
+        "maxTokensPerResponse": 500,
+        "temperature": 0.5,
+        "monthlyTokenBudget": 100000,
+        "enableThinking": false,
+        "promptCacheEnabled": true
+      },
+      "context": {
+        "systemTokenBudget": 1000,
+        "shortTermBudget": 1000,
+        "longTermBudget": 500,
+        "memoryIndexBudget": 100,
+        "summarizationThreshold": 4000,
+        "maxConversationTurns": 20
+      },
+      "hitl": {
+        "autoEscalateConfidenceBelow": 0,
+        "autoEscalateTopics": [],
+        "requireApprovalForActions": [],
+        "maxAutoActionsPerSession": 0,
+        "escalationChannels": []
+      },
+      "orchestrator": {
+        "enableAutoRouting": false,
+        "confidenceThreshold": 0.5,
+        "maxAgentSwitchesPerSession": 1,
+        "handoffOnLowConfidence": false,
+        "handoffOnNegativeSentiment": false,
+        "handoffOnUserRequest": false,
+        "handoffKeywords": []
+      },
+      "agents": []
+    }
+  },
+  "agents": [],
+  "tools": [],
+  "guardrails": [],
+  "humanAgents": [
+    {
+      "name": "Pradeep (Platform Owner)",
+      "email": "pradeep@amtariksha.com",
+      "role": "super_admin",
+      "password": "changeme123"
+    }
+  ],
+  "webhookConfigs": []
+}

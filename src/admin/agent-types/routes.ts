@@ -2,8 +2,16 @@ import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../shared/db.js';
 import { agentTypes, agentTools, tools } from '../../shared/schema/index.js';
-import { createAgentTypeSchema } from '../../shared/validators/index.js';
+import { createAgentTypeSchema, updateAgentTypeSchema } from '../../shared/validators/index.js';
 import { authMiddleware, requireRole } from '../../shared/middleware/auth.js';
+
+/** Coerce the dailySpendCapUsd input (number | string | null | undefined) to the
+ *  string-or-null shape Drizzle's numeric type expects. */
+function coerceCap(input: number | string | null | undefined): string | null {
+  if (input === null || input === undefined || input === '') return null;
+  if (typeof input === 'number') return input.toFixed(2);
+  return input;
+}
 
 export async function agentTypeRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authMiddleware);
@@ -47,6 +55,7 @@ export async function agentTypeRoutes(app: FastifyInstance) {
       const [created] = await db.insert(agentTypes).values({
         tenantId: request.params.id,
         ...body,
+        dailySpendCapUsd: coerceCap(body.dailySpendCapUsd),
       }).returning();
       return reply.status(201).send(created);
     },
@@ -57,9 +66,13 @@ export async function agentTypeRoutes(app: FastifyInstance) {
     '/admin/tenants/:id/agents/:agentId',
     { preHandler: requireRole('admin') },
     async (request, reply) => {
-      const body = request.body as Record<string, unknown>;
+      const body = updateAgentTypeSchema.parse(request.body);
+      const updates: Record<string, unknown> = { ...body };
+      if ('dailySpendCapUsd' in body) {
+        updates.dailySpendCapUsd = coerceCap(body.dailySpendCapUsd);
+      }
       const [updated] = await db.update(agentTypes)
-        .set(body)
+        .set(updates)
         .where(and(eq(agentTypes.tenantId, request.params.id), eq(agentTypes.id, request.params.agentId)))
         .returning();
       if (!updated) return reply.status(404).send({ error: 'Agent type not found' });
