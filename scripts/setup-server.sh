@@ -214,16 +214,23 @@ sleep 5
 ###############################################################################
 # 9. Run migrations and seed
 ###############################################################################
-log "Running database migrations..."
+# drizzle-kit push MUST run first — it creates every table from the TS schema.
+# The drizzle/*.sql files only ALTER those tables (pgvector columns, indexes,
+# RLS), so they fail with "relation does not exist" if applied before push.
+log "Running database migrations (drizzle-kit push)..."
 sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T app npx drizzle-kit push 2>&1 || warn "Migration may need manual review"
 
 if [[ "${COMPOSE_FILE}" == "docker-compose.prod.yml" ]]; then
-    # Apply pgvector + RLS on local Postgres
-    log "Applying pgvector extension and RLS policies..."
-    sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T postgres \
-        psql -U agentforge -d agentforge < "${APP_DIR}/drizzle/0000_init.sql" 2>&1 || warn "RLS SQL may need manual review"
+    # Apply ALL raw SQL migrations in order (pgvector columns, indexes, RLS).
+    # They are idempotent (IF NOT EXISTS / DROP POLICY IF EXISTS), so re-running
+    # is safe. Applied after push so the target tables already exist.
+    for sql in $(ls "${APP_DIR}"/drizzle/*.sql | sort); do
+        log "Applying $(basename "${sql}")..."
+        sudo -u "${DEPLOY_USER}" docker compose -f "${COMPOSE_FILE}" exec -T postgres \
+            psql -U agentforge -d agentforge < "${sql}" 2>&1 || warn "$(basename "${sql}") may need manual review"
+    done
 else
-    log "Skipping RLS SQL — run it on the DB server if not done already"
+    log "Skipping RLS SQL — run drizzle/*.sql (in sorted order) on the DB server after 'drizzle-kit push'"
 fi
 
 log "Seeding database..."

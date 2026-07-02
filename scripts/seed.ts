@@ -1,16 +1,58 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import bcrypt from 'bcryptjs';
+import { z } from 'zod';
 import { eq, and } from 'drizzle-orm';
 import { db, pool } from '../src/shared/db.js';
 import {
   tenants, humanAgents, agentTypes, tools, agentTools,
-  guardrails, webhookConfigs,
+  guardrails, webhookConfigs, modelPricing,
 } from '../src/shared/schema/index.js';
 import type { TenantSeed } from '../src/shared/types/index.js';
 import { encrypt } from '../src/shared/utils/encryption.js';
 
 const SEEDS_DIR = join(import.meta.dirname, '..', 'config', 'seeds');
+
+const pricingRowSchema = z.object({
+  provider: z.string().min(1),
+  model: z.string().min(1),
+  inputPerMtok: z.number().nonnegative(),
+  outputPerMtok: z.number().nonnegative(),
+  cacheWritePerMtok: z.number().nonnegative(),
+  cacheReadPerMtok: z.number().nonnegative(),
+  effectiveFrom: z.string().datetime(),
+  effectiveTo: z.string().datetime().nullable().optional(),
+});
+
+const pricingFileSchema = z.object({ pricing: z.array(pricingRowSchema) });
+
+async function seedModelPricing() {
+  const files = readdirSync(SEEDS_DIR).filter(f => f.endsWith('.pricing.json'));
+  if (files.length === 0) return;
+
+  let count = 0;
+  for (const file of files) {
+    const parsed = pricingFileSchema.parse(JSON.parse(readFileSync(join(SEEDS_DIR, file), 'utf-8')));
+    for (const row of parsed.pricing) {
+      // Idempotent on (provider, model, effective_from). A price change is a new
+      // effectiveFrom row, so re-seeding never mutates an existing version.
+      await db.insert(modelPricing).values({
+        provider: row.provider,
+        model: row.model,
+        inputPerMtok: String(row.inputPerMtok),
+        outputPerMtok: String(row.outputPerMtok),
+        cacheWritePerMtok: String(row.cacheWritePerMtok),
+        cacheReadPerMtok: String(row.cacheReadPerMtok),
+        effectiveFrom: new Date(row.effectiveFrom),
+        effectiveTo: row.effectiveTo ? new Date(row.effectiveTo) : null,
+      }).onConflictDoNothing({
+        target: [modelPricing.provider, modelPricing.model, modelPricing.effectiveFrom],
+      });
+      count++;
+    }
+  }
+  console.log(`Seeded model_pricing: ${count} row(s) from ${files.join(', ')}`);
+}
 
 function resolveEnvValues(obj: unknown): unknown {
   if (typeof obj === 'string') {
@@ -242,6 +284,9 @@ async function seedTenant(seed: TenantSeed) {
 
 async function main() {
   console.log('=== AgentForge Seed Runner ===\n');
+
+  // Platform reference data first — so cost capture can price usage immediately.
+  await seedModelPricing();
 
   const files = readdirSync(SEEDS_DIR).filter(f => f.endsWith('.seed.json'));
 

@@ -31,10 +31,11 @@ function chunkText(text: string, chunkSizeTokens: number, overlapTokens: number)
 }
 
 /**
- * Generate embedding using Anthropic/OpenAI.
- * Falls back to zero vector if no API key configured.
+ * Generate embedding using OpenAI (text-embedding-3-small, 1536 dims).
+ * Falls back to zero vector if no API key configured; callers must treat an
+ * all-zero vector as "no embedding" (cosine scores against it are meaningless).
  */
-async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(text: string): Promise<number[]> {
   const openaiKey = process.env.OPENAI_API_KEY;
   if (!openaiKey) {
     log.warn('No OPENAI_API_KEY configured — using zero vector for embeddings');

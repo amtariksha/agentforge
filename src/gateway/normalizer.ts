@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import type { UnifiedMessage } from '../shared/types/index.js';
+import { decodeActionId } from './renderers/base.js';
 
 interface WhatsAppMessage {
   from: string;
@@ -91,14 +92,24 @@ export function normalizeWhatsAppMessage(
       unified.content.text = msg.contacts?.map(c => c.name.formatted_name).join(', ');
       break;
 
-    case 'interactive':
+    case 'interactive': {
       unified.content.type = 'interactive_reply';
+      const isList = !!msg.interactive?.list_reply;
       const reply = msg.interactive?.button_reply ?? msg.interactive?.list_reply;
       if (reply) {
         unified.content.interactiveReply = { id: reply.id, title: reply.title };
         unified.content.text = reply.title;
+        // The reply id encodes the block's action (intent#payload) — bubble it up.
+        const decoded = decodeActionId(reply.id);
+        unified.metadata.action = {
+          intent: decoded.intent,
+          payload: decoded.payload,
+          title: reply.title,
+          source: isList ? 'list' : 'button',
+        };
       }
       break;
+    }
 
     default:
       unified.content.type = 'text';

@@ -29,9 +29,11 @@ import {
 } from '../shared/schema/index.js';
 import { loadToolsForAgent, executeTool } from '../tools/executor.js';
 import { createChildLogger } from '../shared/utils/logger.js';
-import { estimateCost } from './agent-loop.js';
+import { computeCostUsd } from './pricing.js';
 import { fireWebhooks } from '../gateway/outbound-webhooks.js';
-import { streamLlm, activeProvider } from './llm-provider.js';
+import { streamLlm } from './llm-provider.js';
+import { renderUiToolDef } from '../tools/platform/render-ui.js';
+import { textBlock, type ContentBlock } from '../ui/content-blocks.js';
 
 // Slugs of agents whose runs should fire an outbound `agent_run.completed`
 // webhook so the admin panel can post-process. Per integration plan §4.3,
@@ -48,7 +50,8 @@ export type StreamEvent =
   | { type: 'token'; content: string }
   | { type: 'tool_call'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; id: string; name: string; output: unknown; success: boolean }
-  | { type: 'done'; usage: { input_tokens: number; output_tokens: number; cached_tokens: number; cost_usd: number }; finalText: string }
+  | { type: 'ui'; blocks: ContentBlock[] }
+  | { type: 'done'; usage: { input_tokens: number; output_tokens: number; cached_tokens: number; cache_write_tokens: number; cache_read_tokens: number; cost_usd: number | null }; finalText: string }
   | { type: 'error'; message: string };
 
 export interface StreamAgentParams {
@@ -133,13 +136,23 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
     input_schema: t.parameters as Record<string, unknown>,
   }));
 
+  // 6b. Offer render_ui (path B) only to agents that opted in via a non-empty
+  // block whitelist. Path A (tool-returned ui) always works.
+  const allowedBlockTypes = (agent.allowedBlockTypes as string[] | null | undefined) ?? null;
+  if (Array.isArray(allowedBlockTypes) && allowedBlockTypes.length > 0) {
+    normalisedTools.push(renderUiToolDef());
+  }
+
   // 7. Streaming tool-use loop
-  const provider = activeProvider();
   const model = agent.modelOverride ?? 'claude-sonnet-4-6';
   let currentMessages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
-  let totalCachedTokens = 0;
+  let totalCacheWriteTokens = 0;
+  let totalCacheReadTokens = 0;
+  // Provider/model that actually served (may be the fallback).
+  let servedBy: { provider: string; model: string } = { provider: 'anthropic', model };
+  const uiBlocks: ContentBlock[] = [];
   let finalText = '';
   let iterations = 0;
 
@@ -161,7 +174,9 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
 
       totalInputTokens += response.usage.input_tokens;
       totalOutputTokens += response.usage.output_tokens;
-      totalCachedTokens += response.usage.cached_tokens;
+      totalCacheWriteTokens += response.usage.cache_write_tokens;
+      totalCacheReadTokens += response.usage.cache_read_tokens;
+      servedBy = response.servedBy;
 
       // Pull text + tool_use blocks
       const toolUseBlocks = response.content.filter(
@@ -191,6 +206,7 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
           agentTypeSlug: agentSlug,
           shadowMode: agent.shadowMode,
           requestId,
+          allowedBlockTypes,
         });
 
         onEvent({
@@ -200,6 +216,13 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
           output: result.success ? result.data : result.error,
           success: result.success,
         });
+
+        // Generative-UI blocks (path A/B): stream progressively + collect for persistence.
+        if (result.success && Array.isArray(result.ui)) {
+          const blocks = result.ui as ContentBlock[];
+          uiBlocks.push(...blocks);
+          onEvent({ type: 'ui', blocks });
+        }
 
         toolResults.push({
           type: 'tool_result',
@@ -216,31 +239,40 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
       ];
     }
 
-    // 8. Persist agent response + usage
-    if (finalText) {
+    // 8. Persist agent response + usage (text + any generative-UI blocks)
+    if (finalText || uiBlocks.length > 0) {
+      const finalBlocks: ContentBlock[] = uiBlocks.length > 0
+        ? [textBlock(finalText), ...uiBlocks]
+        : [textBlock(finalText)];
       await db.insert(messagesTable).values({
         conversationId: conversation.id,
         tenantId,
         senderType: 'agent',
-        content: { type: 'text', text: finalText },
+        content: { type: 'text', text: finalText, blocks: finalBlocks },
         metadata: { model, requestId, agentSlug },
       });
     }
 
-    // Cost accounting uses the agent's nominal model (Anthropic pricing).
-    // When running on Gemini the absolute cost is wrong but the relative
-    // shape is preserved, so the daily-cap behavior is still meaningful.
-    const costUsd = estimateCost(model, totalInputTokens, totalOutputTokens, totalCachedTokens);
+    // Cost accounting uses the versioned model_pricing table, attributed to the
+    // provider/model that actually served (may be the fallback).
+    const { costUsd, pricingId } = await computeCostUsd(servedBy.provider, servedBy.model, {
+      input: totalInputTokens,
+      output: totalOutputTokens,
+      cacheWrite: totalCacheWriteTokens,
+      cacheRead: totalCacheReadTokens,
+    });
     await db.insert(llmUsageLogs).values({
       tenantId,
       conversationId: conversation.id,
       agentTypeSlug: agentSlug,
-      model,
-      provider,
+      model: servedBy.model,
+      provider: servedBy.provider,
       tokensInput: totalInputTokens,
       tokensOutput: totalOutputTokens,
-      tokensCached: totalCachedTokens,
-      costUsd: costUsd.toFixed(6),
+      tokensCacheWrite: totalCacheWriteTokens,
+      tokensCacheRead: totalCacheReadTokens,
+      costUsd: costUsd === null ? null : costUsd.toFixed(6),
+      pricingId,
     });
 
     await db.update(conversations)
@@ -256,8 +288,10 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
       usage: {
         input_tokens: totalInputTokens,
         output_tokens: totalOutputTokens,
-        cached_tokens: totalCachedTokens,
-        cost_usd: Number(costUsd.toFixed(6)),
+        cached_tokens: totalCacheReadTokens,   // = cache_read_tokens, kept for consumer compat
+        cache_write_tokens: totalCacheWriteTokens,
+        cache_read_tokens: totalCacheReadTokens,
+        cost_usd: costUsd === null ? null : Number(costUsd.toFixed(6)),
       },
       finalText,
     });
@@ -273,14 +307,18 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
         usage: {
           input_tokens: totalInputTokens,
           output_tokens: totalOutputTokens,
-          cached_tokens: totalCachedTokens,
-          cost_usd: Number(costUsd.toFixed(6)),
+          cached_tokens: totalCacheReadTokens,
+          cache_write_tokens: totalCacheWriteTokens,
+          cache_read_tokens: totalCacheReadTokens,
+          cost_usd: costUsd === null ? null : Number(costUsd.toFixed(6)),
         },
       }).catch((err) => childLog.warn({ err }, 'agent_run.completed webhook fire failed'));
     }
 
     childLog.info({
-      iterations, totalInputTokens, totalOutputTokens, totalCachedTokens, costUsd,
+      iterations, totalInputTokens, totalOutputTokens,
+      totalCacheWriteTokens, totalCacheReadTokens, costUsd,
+      provider: servedBy.provider, model: servedBy.model,
       shadowMode: agent.shadowMode,
     }, 'Stream agent run complete');
 

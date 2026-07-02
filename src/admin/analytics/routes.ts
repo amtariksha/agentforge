@@ -48,7 +48,9 @@ export async function analyticsRoutes(app: FastifyInstance) {
         totalCost: sql<string>`coalesce(sum(cost_usd), 0)`,
         totalInputTokens: sql<number>`coalesce(sum(tokens_input), 0)`,
         totalOutputTokens: sql<number>`coalesce(sum(tokens_output), 0)`,
-        totalCachedTokens: sql<number>`coalesce(sum(tokens_cached), 0)`,
+        // Cache reads span legacy (tokens_cached) and split (tokens_cache_read) rows.
+        totalCachedTokens: sql<number>`coalesce(sum(coalesce(tokens_cache_read, tokens_cached)), 0)`,
+        totalCacheWriteTokens: sql<number>`coalesce(sum(tokens_cache_write), 0)`,
         callCount: sql<number>`count(*)`,
       }).from(llmUsageLogs).where(and(eq(llmUsageLogs.tenantId, tenantId), gte(llmUsageLogs.createdAt, since)));
 
@@ -58,13 +60,19 @@ export async function analyticsRoutes(app: FastifyInstance) {
         calls: sql<number>`count(*)`,
         inputTokens: sql<number>`coalesce(sum(tokens_input), 0)`,
         outputTokens: sql<number>`coalesce(sum(tokens_output), 0)`,
-        cachedTokens: sql<number>`coalesce(sum(tokens_cached), 0)`,
+        cachedTokens: sql<number>`coalesce(sum(coalesce(tokens_cache_read, tokens_cached)), 0)`,
+        cacheWriteTokens: sql<number>`coalesce(sum(tokens_cache_write), 0)`,
       }).from(llmUsageLogs)
         .where(and(eq(llmUsageLogs.tenantId, tenantId), gte(llmUsageLogs.createdAt, since)))
         .groupBy(llmUsageLogs.model);
 
-      const cacheHitRate = totals && Number(totals.totalInputTokens) > 0
-        ? (Number(totals.totalCachedTokens) / Number(totals.totalInputTokens) * 100).toFixed(1)
+      // Denominator is total billed input: uncached input + both cache tiers
+      // (input_tokens excludes cache tokens).
+      const billedInput = totals
+        ? Number(totals.totalInputTokens) + Number(totals.totalCacheWriteTokens) + Number(totals.totalCachedTokens)
+        : 0;
+      const cacheHitRate = billedInput > 0
+        ? (Number(totals.totalCachedTokens) / billedInput * 100).toFixed(1)
         : '0';
 
       return reply.send({

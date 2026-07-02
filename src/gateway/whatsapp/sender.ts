@@ -100,6 +100,40 @@ export async function sendWhatsAppInteractiveList(
   return sendWhatsAppRequest(wa.phoneNumberId, wa.accessToken, body);
 }
 
+interface SendMediaOptions {
+  to: string;
+  link: string;
+  caption?: string;
+  filename?: string;
+}
+
+export async function sendWhatsAppImage(config: TenantConfig, options: SendMediaOptions) {
+  const wa = config.channels.whatsapp;
+  if (!wa) return { success: false };
+  return sendWhatsAppRequest(wa.phoneNumberId, wa.accessToken, {
+    messaging_product: 'whatsapp', to: options.to, type: 'image',
+    image: { link: options.link, caption: options.caption },
+  });
+}
+
+export async function sendWhatsAppVideo(config: TenantConfig, options: SendMediaOptions) {
+  const wa = config.channels.whatsapp;
+  if (!wa) return { success: false };
+  return sendWhatsAppRequest(wa.phoneNumberId, wa.accessToken, {
+    messaging_product: 'whatsapp', to: options.to, type: 'video',
+    video: { link: options.link, caption: options.caption },
+  });
+}
+
+export async function sendWhatsAppDocument(config: TenantConfig, options: SendMediaOptions) {
+  const wa = config.channels.whatsapp;
+  if (!wa) return { success: false };
+  return sendWhatsAppRequest(wa.phoneNumberId, wa.accessToken, {
+    messaging_product: 'whatsapp', to: options.to, type: 'document',
+    document: { link: options.link, caption: options.caption, filename: options.filename },
+  });
+}
+
 async function sendWhatsAppRequest(
   phoneNumberId: string,
   accessToken: string,

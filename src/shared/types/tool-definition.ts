@@ -58,5 +58,11 @@ export interface ToolExecutionResult {
     code: string;
     message: string;
   };
+  /**
+   * Generative-UI blocks (Milestone 2, emission path A). Raw ContentBlock[];
+   * validated + whitelisted in executor.ts, never trusted as-is. Typed `unknown`
+   * here so this pure type module stays free of a runtime import.
+   */
+  ui?: unknown;
   durationMs: number;
 }

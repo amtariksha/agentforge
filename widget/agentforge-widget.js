@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  var WIDGET_VERSION = '1.0.0';
+  var WIDGET_VERSION = '2.0.0';
 
   // Read config from script tag
   var scriptTag = document.currentScript || document.querySelector('script[data-tenant-id]');
@@ -46,7 +46,30 @@
     '.af-input-bar input{flex:1;border:1px solid #e2e8f0;border-radius:24px;padding:10px 16px;font-size:14px;outline:none}',
     '.af-input-bar input:focus{border-color:' + primaryColor + '}',
     '.af-send{width:40px;height:40px;border-radius:50%;background:' + primaryColor + ';color:#fff;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center}',
-    '.af-send:disabled{opacity:.5;cursor:not-allowed}'
+    '.af-send:disabled{opacity:.5;cursor:not-allowed}',
+    // ---- Generative UI blocks (v2) ----
+    '.af-block{align-self:flex-start;max-width:95%;margin:2px 0}',
+    '.af-card{border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;background:#fff;width:240px}',
+    '.af-card img{width:100%;height:130px;object-fit:cover;display:block}',
+    '.af-card-body{padding:10px 12px}',
+    '.af-card-title{font-weight:600;font-size:14px;margin:0 0 2px}',
+    '.af-card-sub{color:#64748b;font-size:12px;margin:0 0 6px}',
+    '.af-card-price{font-weight:600;font-size:14px;color:' + primaryColor + '}',
+    '.af-carousel{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}',
+    '.af-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}',
+    '.af-btn{border:1px solid ' + primaryColor + ';color:' + primaryColor + ';background:#fff;border-radius:16px;padding:6px 12px;font-size:13px;cursor:pointer}',
+    '.af-btn:hover{background:' + primaryColor + ';color:#fff}',
+    '.af-table{border-collapse:collapse;font-size:13px;width:100%}',
+    '.af-table th,.af-table td{border:1px solid #e2e8f0;padding:5px 8px;text-align:left}',
+    '.af-table th{background:#f8fafc;font-weight:600}',
+    '.af-kpi{border:1px solid #e2e8f0;border-radius:12px;padding:12px 14px;background:#fff;min-width:120px}',
+    '.af-kpi-label{color:#64748b;font-size:12px}',
+    '.af-kpi-value{font-size:22px;font-weight:700}',
+    '.af-kpi-up{color:#16a34a}.af-kpi-down{color:#dc2626}',
+    '.af-form{border:1px solid #e2e8f0;border-radius:12px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px;width:240px}',
+    '.af-form label{font-size:12px;color:#334155;display:flex;flex-direction:column;gap:3px}',
+    '.af-form input,.af-form select,.af-form textarea{border:1px solid #e2e8f0;border-radius:8px;padding:6px 8px;font-size:13px}',
+    '.af-chart{width:260px;height:140px}'
   ].join('');
   document.head.appendChild(style);
 
@@ -138,6 +161,167 @@
     if (typing) typing.remove();
   }
 
+  // ---- Generative UI rendering (v2) — vanilla DOM, no innerHTML ----
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+
+  function sendIntent(action) {
+    if (action.kind === 'url' && action.url) { window.open(action.url, '_blank', 'noopener'); return; }
+    if (action.kind === 'call' && action.url) { window.location.href = action.url; return; }
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: 'action',
+      intent: action.intent || 'postback',
+      payload: action.payload || '',
+      label: action.label,
+      userId: userId
+    }));
+    addMessage(action.label, 'user');
+  }
+
+  function actionButton(action) {
+    var b = el('button', 'af-btn', action.label);
+    b.addEventListener('click', function () { sendIntent(action); });
+    return b;
+  }
+
+  function actionRow(actions) {
+    var row = el('div', 'af-actions');
+    (actions || []).forEach(function (a) { row.appendChild(actionButton(a)); });
+    return row;
+  }
+
+  function renderCard(block) {
+    var card = el('div', 'af-card');
+    if (block.imageUrl) { var img = document.createElement('img'); img.src = block.imageUrl; img.alt = block.title || ''; card.appendChild(img); }
+    var body = el('div', 'af-card-body');
+    body.appendChild(el('p', 'af-card-title', block.title));
+    if (block.subtitle) body.appendChild(el('p', 'af-card-sub', block.subtitle));
+    if (block.price) body.appendChild(el('p', 'af-card-price', (block.price.currency || '') + ' ' + block.price.amount));
+    if (block.actions && block.actions.length) body.appendChild(actionRow(block.actions));
+    card.appendChild(body);
+    return card;
+  }
+
+  function renderTable(block) {
+    var table = el('table', 'af-table');
+    var thead = el('thead'); var htr = el('tr');
+    block.columns.forEach(function (c) { htr.appendChild(el('th', null, c.label)); });
+    thead.appendChild(htr); table.appendChild(thead);
+    var tbody = el('tbody');
+    (block.rows || []).forEach(function (r) {
+      var tr = el('tr');
+      block.columns.forEach(function (c) { tr.appendChild(el('td', null, r[c.key] == null ? '' : String(r[c.key]))); });
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    return table;
+  }
+
+  function renderKpi(block) {
+    var k = el('div', 'af-kpi');
+    k.appendChild(el('div', 'af-kpi-label', block.label));
+    var v = el('div', 'af-kpi-value' + (block.trend === 'up' ? ' af-kpi-up' : block.trend === 'down' ? ' af-kpi-down' : ''), String(block.value));
+    k.appendChild(v);
+    return k;
+  }
+
+  function renderForm(block) {
+    var form = el('form', 'af-form');
+    (block.fields || []).forEach(function (f) {
+      var label = el('label', null, f.label);
+      var field;
+      if (f.inputType === 'select') {
+        field = document.createElement('select');
+        (f.options || []).forEach(function (o) { var opt = document.createElement('option'); opt.value = o.value; opt.textContent = o.label; field.appendChild(opt); });
+      } else if (f.inputType === 'textarea') {
+        field = document.createElement('textarea');
+      } else {
+        field = document.createElement('input');
+        field.type = (f.inputType === 'number' || f.inputType === 'email' || f.inputType === 'tel' || f.inputType === 'date') ? f.inputType : 'text';
+      }
+      field.name = f.name;
+      if (f.required) field.required = true;
+      label.appendChild(field);
+      form.appendChild(label);
+    });
+    var submit = el('button', 'af-btn', block.submitLabel || 'Submit');
+    submit.type = 'submit';
+    form.appendChild(submit);
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var payload = {};
+      (block.fields || []).forEach(function (f) { var node = form.elements[f.name]; if (node) payload[f.name] = node.value; });
+      sendIntent({ kind: 'postback', label: block.submitLabel || 'Submit', intent: block.submitIntent, payload: JSON.stringify(payload) });
+    });
+    return form;
+  }
+
+  function renderChart(block) {
+    if (block.imageUrl) { var img = document.createElement('img'); img.src = block.imageUrl; img.className = 'af-chart'; img.alt = block.fallbackText || 'chart'; return img; }
+    // uPlot lazy-load could go here; for the fallback path show the text so the
+    // user is never left with an empty box.
+    return el('div', 'af-msg af-agent', block.fallbackText);
+  }
+
+  function renderBlock(block) {
+    if (!block || typeof block !== 'object') return;
+    var node;
+    switch (block.type) {
+      case 'text': addMessage(block.text, 'agent'); return;
+      case 'product_card': node = renderCard(block); break;
+      case 'carousel':
+        node = el('div', 'af-carousel');
+        (block.items || []).forEach(function (item) { node.appendChild(renderCard(item)); });
+        break;
+      case 'quick_replies':
+        node = el('div', 'af-block');
+        if (block.prompt) node.appendChild(el('div', 'af-msg af-agent', block.prompt));
+        node.appendChild(actionRow(block.replies));
+        break;
+      case 'confirmation':
+        node = el('div', 'af-block');
+        node.appendChild(el('div', 'af-msg af-agent', block.body || block.title));
+        node.appendChild(actionRow([block.confirm].concat(block.cancel ? [block.cancel] : [])));
+        break;
+      case 'image': { var im = document.createElement('img'); im.src = block.url; im.className = 'af-chart'; im.alt = block.alt || block.caption || ''; node = im; break; }
+      case 'table':
+      case 'comparison':
+      case 'invoice_list': node = renderTable(normalizeTabular(block)); break;
+      case 'kpi_card': node = renderKpi(block); break;
+      case 'form': node = renderForm(block); break;
+      case 'chart': node = renderChart(block); break;
+      default:
+        // webview, video, timeline and anything unknown → safe text fallback.
+        addMessage(block.fallbackText || '', 'agent');
+        return;
+    }
+    var wrap = el('div', 'af-block');
+    wrap.appendChild(node);
+    messagesDiv.appendChild(wrap);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+  }
+
+  // comparison/invoice_list share the table renderer via a light adapter.
+  function normalizeTabular(block) {
+    if (block.type === 'table') return block;
+    if (block.type === 'comparison') {
+      var cols = [{ key: 'feature', label: '' }].concat(block.columns);
+      var rows = (block.rows || []).map(function (r) { var row = { feature: r.feature }; block.columns.forEach(function (c) { row[c.key] = r.values[c.key]; }); return row; });
+      return { columns: cols, rows: rows };
+    }
+    // invoice_list
+    return {
+      columns: [{ key: 'id', label: 'Invoice' }, { key: 'date', label: 'Date' }, { key: 'amount', label: 'Amount' }, { key: 'status', label: 'Status' }],
+      rows: (block.invoices || []).map(function (i) { return { id: i.id, date: i.date, amount: (i.amount.currency || '') + ' ' + i.amount.amount, status: i.status }; })
+    };
+  }
+
   function connectWs() {
     var protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     var wsUrl = serverUrl.replace(/^https?:/, protocol) + '/ws/chat/' + tenantId;
@@ -154,6 +338,9 @@
         } else if (data.type === 'message' || data.type === 'response') {
           hideTyping();
           addMessage(data.text, 'agent');
+        } else if (data.type === 'ui' && Array.isArray(data.blocks)) {
+          hideTyping();
+          data.blocks.forEach(function (b) { renderBlock(b); });
         } else if (data.type === 'error') {
           hideTyping();
           addMessage('Sorry, something went wrong. Please try again.', 'agent');

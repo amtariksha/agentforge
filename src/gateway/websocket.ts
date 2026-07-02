@@ -77,7 +77,15 @@ export async function websocketRoutes(app: FastifyInstance) {
             };
 
             socket.send(JSON.stringify({ type: 'typing', isTyping: true }));
-            await processMessage(unified, tenant.id, tenant.config);
+            // Sink pushes the agent's reply back to the widget. Without it the
+            // web channel has no delivery path (WhatsApp/Telegram use senders).
+            await processMessage(unified, tenant.id, tenant.config, (evt) => {
+              if (evt.type === 'ui') {
+                socket.send(JSON.stringify({ type: 'ui', blocks: evt.blocks }));
+              } else {
+                socket.send(JSON.stringify({ type: 'response', text: evt.text }));
+              }
+            });
             socket.send(JSON.stringify({ type: 'typing', isTyping: false }));
           }
         } catch (err) {

@@ -121,4 +121,6 @@ export interface AgentTypeConfig {
   /** Phase-1 LMS integration — see src/shared/schema/agents.ts. */
   shadowMode?: boolean;
   dailySpendCapUsd?: number | string | null;
+  /** Generative-UI block whitelist (M2). null/undefined = allow all. */
+  allowedBlockTypes?: string[] | null;
 }

@@ -23,6 +23,9 @@ export const agentTypes = pgTable('agent_types', {
   // Per-agent daily USD spend cap. NULL = unlimited. Enforced in agent loop;
   // hits 429 agent_disabled_budget when day's llmUsageLogs sum >= cap.
   dailySpendCapUsd: numeric('daily_spend_cap_usd', { precision: 10, scale: 2 }),
+  // Generative-UI block whitelist (M2). Array of ContentBlock `type` strings the
+  // agent may emit; NULL = allow all. Enforced in the tool executor.
+  allowedBlockTypes: jsonb('allowed_block_types').$type<string[]>(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
   unique('uq_agent_types_tenant_slug').on(table.tenantId, table.slug),

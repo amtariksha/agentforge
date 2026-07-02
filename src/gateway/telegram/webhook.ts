@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { resolveTenantBySlug } from '../../admin/tenants/routes.js';
 import { processMessage } from '../../orchestrator/agent-loop.js';
 import { createChildLogger } from '../../shared/utils/logger.js';
+import { decodeActionId } from '../renderers/base.js';
 import type { UnifiedMessage } from '../../shared/types/index.js';
 
 const log = createChildLogger({ module: 'telegram-webhook' });
@@ -78,7 +79,10 @@ export async function telegramWebhookRoutes(app: FastifyInstance) {
             text: cb.data,
             interactiveReply: { id: cb.data, title: cb.data },
           },
-          metadata: { timestamp: new Date() },
+          metadata: {
+            timestamp: new Date(),
+            action: { ...decodeActionId(cb.data), title: cb.data, source: 'callback' },
+          },
         };
 
         // Answer callback query to remove loading indicator
@@ -178,6 +182,46 @@ export async function sendTelegramText(
     log.error({ err }, 'Telegram send failed');
     return false;
   }
+}
+
+async function telegramMediaSend(
+  botToken: string,
+  method: 'sendPhoto' | 'sendVideo' | 'sendDocument',
+  body: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${TELEGRAM_API_BASE}${botToken}/${method}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      log.error({ status: response.status, method }, 'Telegram media API error');
+      return false;
+    }
+    return true;
+  } catch (err) {
+    log.error({ err, method }, 'Telegram media send failed');
+    return false;
+  }
+}
+
+export function sendTelegramPhoto(
+  botToken: string, chatId: string, photoUrl: string, caption?: string,
+  replyMarkup?: Record<string, unknown>,
+): Promise<boolean> {
+  return telegramMediaSend(botToken, 'sendPhoto', {
+    chat_id: chatId, photo: photoUrl, caption, parse_mode: 'Markdown',
+    ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+  });
+}
+
+export function sendTelegramVideo(botToken: string, chatId: string, videoUrl: string, caption?: string): Promise<boolean> {
+  return telegramMediaSend(botToken, 'sendVideo', { chat_id: chatId, video: videoUrl, caption, parse_mode: 'Markdown' });
+}
+
+export function sendTelegramDocument(botToken: string, chatId: string, fileUrl: string, caption?: string): Promise<boolean> {
+  return telegramMediaSend(botToken, 'sendDocument', { chat_id: chatId, document: fileUrl, caption, parse_mode: 'Markdown' });
 }
 
 /**

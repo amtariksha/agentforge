@@ -13,29 +13,38 @@ import { compactIfNeeded } from './compaction.js';
 import { getMemoryIndex } from '../memory/memory-manager.js';
 import { detectLanguage } from './language.js';
 import { loadToolsForAgent, executeTool } from '../tools/executor.js';
+import { deliverBlocks } from '../gateway/renderers/index.js';
+import { renderUiToolDef } from '../tools/platform/render-ui.js';
+import { extractText, textBlock, type ContentBlock } from '../ui/content-blocks.js';
 import { sendWhatsAppText } from '../gateway/whatsapp/sender.js';
-import { sendTelegramText } from '../gateway/telegram/webhook.js';
 import { isAgentPaused } from '../gateway/whatsapp/coexistence.js';
 import { fireWebhooks } from '../gateway/outbound-webhooks.js';
 import { evaluateEscalation, executeEscalation } from '../admin/hitl/escalation.js';
 import { loadActiveCorrections } from '../admin/corrections/routes.js';
+import { searchPastCorrections, formatPastCorrections } from '../admin/corrections/retrieval.js';
 import { searchKnowledge } from '../memory/knowledge-base.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 import { checkBudget, incrementBudgetUsage } from './budget.js';
+import { callLlm } from './llm-provider.js';
+import { computeCostUsd } from './pricing.js';
 import type { UnifiedMessage, TenantConfig, ConversationTrace, IntentClassification } from '../shared/types/index.js';
 
 const log = createChildLogger({ module: 'agent-loop' });
 
 const MAX_TOOL_ITERATIONS = 10;
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+/**
+ * Sink for pushing the agent's reply to a live web/app client (WebSocket). The
+ * WhatsApp/Telegram channels deliver via their senders; web has no sender, so
+ * without a sink the browser widget receives no reply.
+ */
+export type ResponseSink = (evt: { type: 'text'; text: string } | { type: 'ui'; blocks: ContentBlock[] }) => void;
 
 export async function processMessage(
   message: UnifiedMessage,
   tenantId: string,
   tenantConfig: TenantConfig,
+  sink?: ResponseSink,
 ): Promise<void> {
   const traceId = uuidv4();
   const startTime = Date.now();
@@ -61,12 +70,19 @@ export async function processMessage(
     const conversation = await resolveConversation(tenantId, user.id, message.channel);
     childLog.info({ conversationId: conversation.id }, 'Conversation resolved');
 
-    // 3. Store inbound message
+    // 3. Store inbound message. For a rendered-UI action (button/list reply,
+    // callback, web intent), enrich the text with the structured intent/payload
+    // so the model — which reads this back via history — treats it as an intent
+    // turn, not just the button label. Log ids only elsewhere (no PII).
+    const action = message.metadata?.action;
+    const inboundText = action
+      ? `[user action: intent=${action.intent ?? 'postback'} payload=${action.payload}]${message.content.text ? ' ' + message.content.text : ''}`
+      : message.content.text;
     await db.insert(messagesTable).values({
       conversationId: conversation.id,
       tenantId,
       senderType: 'user',
-      content: { text: message.content.text, mediaUrl: message.content.mediaUrl, contentType: message.content.type },
+      content: { text: inboundText, mediaUrl: message.content.mediaUrl, contentType: message.content.type },
       metadata: message.metadata,
     });
 
@@ -177,8 +193,10 @@ export async function processMessage(
       }
     }
 
-    // 7c. Load active correction rules
+    // 7c. Load active correction rules + retrieve similar past corrections
     const corrections = await loadActiveCorrections(tenantId, agentSlug);
+    const pastCorrectionRows = await searchPastCorrections(tenantId, agentSlug, processedInput);
+    const pastCorrections = formatPastCorrections(pastCorrectionRows);
 
     // 8. Load tools for agent
     const toolDefs = await loadToolsForAgent(tenantId, agentSlug);
@@ -187,6 +205,15 @@ export async function processMessage(
       description: t.description,
       parameters: t.parameters as Record<string, unknown>,
     })));
+
+    // 8b. Generative UI: offer render_ui (path B) only to agents that opted in
+    // via a non-empty block whitelist. Path A (tool-returned ui) always works.
+    const allowedBlockTypes = (selectedAgent?.allowedBlockTypes as string[] | null | undefined) ?? null;
+    const uiEnabled = Array.isArray(allowedBlockTypes) && allowedBlockTypes.length > 0;
+    if (uiEnabled) {
+      const def = renderUiToolDef();
+      anthropicTools.push({ name: def.name, description: def.description, input_schema: def.input_schema as Anthropic.Tool['input_schema'] });
+    }
 
     // 6. Load conversation history (last N messages)
     const maxTurns = tenantConfig.context?.maxConversationTurns ?? 50;
@@ -203,13 +230,12 @@ export async function processMessage(
     // Convert to Anthropic message format (reverse to chronological order)
     const conversationHistory: Anthropic.MessageParam[] = historyRows
       .reverse()
-      .map(row => {
-        const content = row.content as { text?: string; type?: string };
-        return {
-          role: row.senderType === 'user' ? 'user' as const : 'assistant' as const,
-          content: content.text ?? '[media message]',
-        };
-      });
+      .map(row => ({
+        role: row.senderType === 'user' ? 'user' as const : 'assistant' as const,
+        // Normalize any content shape (legacy {text}, new {blocks}) → plain text
+        // for the model. Prevents rich assistant turns collapsing to '[media message]'.
+        content: extractText(row.content),
+      }));
 
     // 10. Context compaction if needed
     const contextBudget = 200000; // 200k context window
@@ -231,6 +257,7 @@ export async function processMessage(
       memoryIndex: memoryIndex ?? undefined,
       ragContext,
       corrections: corrections.length > 0 ? corrections : undefined,
+      pastCorrections: pastCorrections.length > 0 ? pastCorrections : undefined,
       conversationHistory: compactedHistory,
       language: detectedLanguage !== 'en' ? detectedLanguage : (user.languagePreferred ?? undefined),
     });
@@ -238,9 +265,14 @@ export async function processMessage(
     // 12. LLM call with tool loop
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
-    let totalCachedTokens = 0;
+    let totalCacheWriteTokens = 0;
+    let totalCacheReadTokens = 0;
     let finalText = '';
+    // Provider/model that actually served the turn (may be the fallback).
+    let servedBy: { provider: string; model: string } = { provider: 'anthropic', model };
     const toolsCalled: ConversationTrace['toolsCalled'] = [];
+    // Generative-UI blocks emitted by tools (path A) or render_ui (path B).
+    const uiBlocks: ContentBlock[] = [];
 
     let currentMessages = prompt.messages;
     let iterations = 0;
@@ -249,24 +281,27 @@ export async function processMessage(
       iterations++;
 
       const llmStart = Date.now();
-      const response = await anthropic.messages.create({
+      const response = await callLlm({
         model,
-        max_tokens: tenantConfig.ai.maxTokensPerResponse ?? 1024,
+        maxTokens: tenantConfig.ai.maxTokensPerResponse ?? 1024,
         temperature: tenantConfig.ai.temperature ?? 0.7,
         system: prompt.system,
         messages: currentMessages,
-        tools: prompt.tools.length > 0 ? prompt.tools : undefined,
+        tools: prompt.tools.map((t) => ({
+          name: t.name,
+          description: t.description ?? '',
+          input_schema: t.input_schema as Record<string, unknown>,
+        })),
       });
 
       const llmMs = Date.now() - llmStart;
 
-      // Track token usage
+      // Track token usage (both cache tiers) and the serving provider/model.
       totalInputTokens += response.usage.input_tokens;
       totalOutputTokens += response.usage.output_tokens;
-      const usage = response.usage as unknown as Record<string, number>;
-      if ('cache_read_input_tokens' in usage) {
-        totalCachedTokens += usage['cache_read_input_tokens'] ?? 0;
-      }
+      totalCacheWriteTokens += response.usage.cache_write_tokens;
+      totalCacheReadTokens += response.usage.cache_read_tokens;
+      servedBy = response.servedBy;
 
       // Check for tool calls
       const toolUseBlocks = response.content.filter(
@@ -280,7 +315,7 @@ export async function processMessage(
         finalText = textBlocks.map(b => b.text).join('\n');
       }
 
-      if (toolUseBlocks.length === 0 || response.stop_reason === 'end_turn') {
+      if (toolUseBlocks.length === 0 || response.stopReason === 'end_turn') {
         // No more tool calls — we're done
         break;
       }
@@ -303,10 +338,12 @@ export async function processMessage(
           userId: user.id,
           conversationId: conversation.id,
           agentTypeSlug: agentSlug,
+          allowedBlockTypes,
         });
         const toolMs = Date.now() - toolStart;
 
         toolsCalled.push({ name: toolUse.name, status: result.success ? 'success' : 'error', durationMs: toolMs });
+        if (result.success && Array.isArray(result.ui)) uiBlocks.push(...(result.ui as ContentBlock[]));
 
         toolResults.push({
           type: 'tool_result',
@@ -332,12 +369,16 @@ export async function processMessage(
       finalText = outputGuardrail.processedText ?? finalText;
     }
 
-    // 14. Store agent response
+    // 14. Store agent response (text + any generative-UI blocks; zero-migration
+    // shape: legacy readers use `text`, rich readers use `blocks`).
+    const finalBlocks: ContentBlock[] = uiBlocks.length > 0
+      ? [textBlock(finalText), ...uiBlocks]
+      : [textBlock(finalText)];
     await db.insert(messagesTable).values({
       conversationId: conversation.id,
       tenantId,
       senderType: 'agent',
-      content: { type: 'text', text: finalText },
+      content: { type: 'text', text: finalText, blocks: finalBlocks },
       metadata: { model, traceId },
     });
 
@@ -350,23 +391,23 @@ export async function processMessage(
       })
       .where(eq(conversations.id, conversation.id));
 
-    // 15. Send response via channel
-    if (finalText) {
+    // 15. Send response via channel. WhatsApp/Telegram render blocks to native
+    // elements (degrading unsupported ones to fallbackText); web/app push through
+    // the sink to the live WebSocket client.
+    if (finalText || uiBlocks.length > 0) {
+      const to = message.sender.platformUserId;
       switch (message.channel) {
         case 'whatsapp':
-          await sendWhatsAppText(tenantConfig, {
-            to: message.sender.platformUserId,
-            text: finalText,
-          });
+          await deliverBlocks('whatsapp', finalBlocks, { tenantConfig, to });
           break;
-        case 'telegram': {
-          const botToken = tenantConfig.channels.telegram?.botToken;
-          if (botToken) {
-            await sendTelegramText(botToken, message.sender.platformUserId, finalText);
-          }
+        case 'telegram':
+          await deliverBlocks('telegram', finalBlocks, { tenantConfig, to, botToken: tenantConfig.channels.telegram?.botToken });
           break;
-        }
-        // web + app channels deliver via WebSocket/SSE (handled separately)
+        case 'web':
+        case 'app':
+          if (uiBlocks.length > 0) sink?.({ type: 'ui', blocks: finalBlocks });
+          else sink?.({ type: 'text', text: finalText });
+          break;
       }
     }
 
@@ -389,10 +430,12 @@ export async function processMessage(
       turnNumber: Math.ceil((conversation.messageCount ?? 0) / 2) + 1,
       timing: { totalMs, llmMs: totalMs, toolMs: toolsCalled.reduce((sum, t) => sum + t.durationMs, 0) },
       ai: {
-        modelUsed: model,
+        modelUsed: servedBy.model,
         tokensInput: totalInputTokens,
         tokensOutput: totalOutputTokens,
-        tokensCached: totalCachedTokens,
+        tokensCached: totalCacheReadTokens,
+        tokensCacheWrite: totalCacheWriteTokens,
+        tokensCacheRead: totalCacheReadTokens,
         confidence: classification?.confidence,
         intent: classification?.intent,
         agentType: agentSlug,
@@ -410,18 +453,26 @@ export async function processMessage(
       traceData: trace,
     });
 
-    // Log LLM usage
-    const costUsd = estimateCost(model, totalInputTokens, totalOutputTokens, totalCachedTokens);
+    // Log LLM usage — cost computed from the versioned model_pricing table,
+    // attributed to the provider/model that actually served (may be fallback).
+    const { costUsd, pricingId } = await computeCostUsd(servedBy.provider, servedBy.model, {
+      input: totalInputTokens,
+      output: totalOutputTokens,
+      cacheWrite: totalCacheWriteTokens,
+      cacheRead: totalCacheReadTokens,
+    });
     await db.insert(llmUsageLogs).values({
       tenantId,
       conversationId: conversation.id,
       agentTypeSlug: agentSlug,
-      model,
-      provider: 'anthropic',
+      model: servedBy.model,
+      provider: servedBy.provider,
       tokensInput: totalInputTokens,
       tokensOutput: totalOutputTokens,
-      tokensCached: totalCachedTokens,
-      costUsd: costUsd.toFixed(6),
+      tokensCacheWrite: totalCacheWriteTokens,
+      tokensCacheRead: totalCacheReadTokens,
+      costUsd: costUsd === null ? null : costUsd.toFixed(6),
+      pricingId,
     });
 
     // Update budget counter
@@ -429,11 +480,13 @@ export async function processMessage(
 
     childLog.info({
       totalMs,
-      model,
+      model: servedBy.model,
+      provider: servedBy.provider,
       tokensIn: totalInputTokens,
       tokensOut: totalOutputTokens,
-      tokensCached: totalCachedTokens,
-      costUsd: costUsd.toFixed(6),
+      tokensCacheWrite: totalCacheWriteTokens,
+      tokensCacheRead: totalCacheReadTokens,
+      costUsd: costUsd === null ? null : costUsd.toFixed(6),
       toolsUsed: toolsCalled.length,
     }, 'Message processed');
 
@@ -512,22 +565,4 @@ async function resolveConversation(tenantId: string, userId: string, channel: st
   }).returning();
 
   return created;
-}
-
-export function estimateCost(model: string, inputTokens: number, outputTokens: number, cachedTokens: number): number {
-  // Pricing per million tokens (approximate as of 2026)
-  const pricing: Record<string, { input: number; output: number; cached: number }> = {
-    'claude-sonnet-4-6':  { input: 3.0, output: 15.0, cached: 0.3 },
-    'claude-opus-4-6':    { input: 15.0, output: 75.0, cached: 1.5 },
-    'claude-haiku-4-5':   { input: 0.8, output: 4.0, cached: 0.08 },
-  };
-
-  const p = pricing[model] ?? pricing['claude-sonnet-4-6'];
-  const uncachedInput = inputTokens - cachedTokens;
-
-  return (
-    (uncachedInput / 1_000_000) * p.input +
-    (cachedTokens / 1_000_000) * p.cached +
-    (outputTokens / 1_000_000) * p.output
-  );
 }

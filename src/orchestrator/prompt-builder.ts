@@ -41,6 +41,8 @@ interface PromptContext {
   conversationHistory: Anthropic.MessageParam[];
   language?: string;
   corrections?: string[];
+  /** Retrieved similar past operator corrections (guidance, never verbatim replies). */
+  pastCorrections?: string[];
 }
 
 interface BuiltPrompt {
@@ -110,6 +112,16 @@ export function buildPrompt(ctx: PromptContext): BuiltPrompt {
   if (ctx.corrections && ctx.corrections.length > 0) {
     dynamicParts.push('', '## Active Corrections');
     for (const correction of ctx.corrections) {
+      dynamicParts.push(`- ${correction}`);
+    }
+  }
+
+  // Learned corrections — retrieved from past operator fixes. Guidance only,
+  // never verbatim replies (strict write discipline). Lives in the dynamic
+  // block so per-turn variance never invalidates the static prompt cache.
+  if (ctx.pastCorrections && ctx.pastCorrections.length > 0) {
+    dynamicParts.push('', '## Learned Corrections (from past operator fixes — guidance, not verbatim replies)');
+    for (const correction of ctx.pastCorrections) {
       dynamicParts.push(`- ${correction}`);
     }
   }

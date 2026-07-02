@@ -22,5 +22,16 @@ export interface UnifiedMessage {
     isReplyTo?: string;
     languageDetected?: string;
     context?: Record<string, unknown>;
+    /**
+     * Set when this inbound message is a rendered-UI action (button/list reply,
+     * Telegram callback, or web intent). The loop treats it as a structured user
+     * turn (intent-bubbling) rather than raw text.
+     */
+    action?: {
+      intent?: string;
+      payload: string;
+      title?: string;
+      source: 'button' | 'list' | 'callback' | 'form' | 'web';
+    };
   };
 }

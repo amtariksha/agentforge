@@ -1,0 +1,9 @@
+{
+  "pricing": [
+    { "provider": "anthropic", "model": "claude-opus-4-8",   "inputPerMtok": 5.0,  "outputPerMtok": 25.0, "cacheWritePerMtok": 6.25,  "cacheReadPerMtok": 0.50,  "effectiveFrom": "2025-01-01T00:00:00Z" },
+    { "provider": "anthropic", "model": "claude-sonnet-4-6", "inputPerMtok": 3.0,  "outputPerMtok": 15.0, "cacheWritePerMtok": 3.75,  "cacheReadPerMtok": 0.30,  "effectiveFrom": "2025-01-01T00:00:00Z" },
+    { "provider": "anthropic", "model": "claude-haiku-4-5",  "inputPerMtok": 1.0,  "outputPerMtok": 5.0,  "cacheWritePerMtok": 1.25,  "cacheReadPerMtok": 0.10,  "effectiveFrom": "2025-01-01T00:00:00Z" },
+    { "provider": "anthropic", "model": "claude-opus-4-6",   "inputPerMtok": 15.0, "outputPerMtok": 75.0, "cacheWritePerMtok": 18.75, "cacheReadPerMtok": 1.50,  "effectiveFrom": "2025-01-01T00:00:00Z" },
+    { "provider": "gemini",    "model": "gemini-2.0-flash",  "inputPerMtok": 0.10, "outputPerMtok": 0.40, "cacheWritePerMtok": 0.10,  "cacheReadPerMtok": 0.025, "effectiveFrom": "2025-01-01T00:00:00Z" }
+  ]
+}

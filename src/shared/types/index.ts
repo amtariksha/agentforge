@@ -1,6 +1,7 @@
 export type { UnifiedMessage } from './unified-message.js';
 export type { TenantConfig, AgentTypeConfig } from './tenant-config.js';
 export type { ToolDefinition, BackendMapping, ToolExecutionResult } from './tool-definition.js';
+export type { ContentBlock, ContentBlockType, MessageContent, Action } from '../../ui/content-blocks.js';
 
 import type { TenantConfig, AgentTypeConfig } from './tenant-config.js';
 import type { ToolDefinition } from './tool-definition.js';
@@ -33,7 +34,10 @@ export interface ConversationTrace {
     modelUsed: string;
     tokensInput: number;
     tokensOutput: number;
+    /** @deprecated kept for legacy trace parsing; equals tokensCacheRead going forward. */
     tokensCached: number;
+    tokensCacheWrite: number;
+    tokensCacheRead: number;
     confidence?: number;
     intent?: string;
     agentType?: string;

@@ -31,9 +31,13 @@ export function listHandlers(): string[] {
   return Array.from(registry.keys());
 }
 
-// Auto-register tenant modules
+// Auto-register tenant modules + platform tools
 export async function initializeGateway() {
   try {
+    // Platform tools available to every tenant (unqualified keys).
+    const { renderUiHandler, RENDER_UI_TOOL_NAME } = await import('../platform/render-ui.js');
+    registerHandler(RENDER_UI_TOOL_NAME, renderUiHandler);
+
     const swargFood = await import('./swarg-food/index.js');
     swargFood.register();
     log.info('Tenant gateway initialized');
