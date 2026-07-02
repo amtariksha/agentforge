@@ -49,6 +49,16 @@ Rebuild of old Python/LangChain chatagent.
 - No conversation flows / visual builder.
 - No A/B testing.
 - No internal CRM/Kanban (use outbound webhooks to external CRM).
-- No billing/subscriptions yet.
 - No voice yet.
 - No formal blueprint/template system (configure tools directly).
+
+## Build (v4 additions)
+- Generative UI: content blocks (src/ui/content-blocks.ts), tool `ui` passthrough,
+  render_ui platform tool, channel renderers. Messages.content = { blocks: [...] }.
+- Cost & billing: model_pricing (versioned, cache write/read tiers), split
+  tokensCached → tokensCacheWrite/tokensCacheRead, billing_periods, invoices,
+  ledger, budget alert notifications. llm_usage_logs stays the single source.
+- Async operator runtime on BullMQ for accounting-reconciliation and
+  marketing agents (approval-gated, no direct customer chat).
+- Tool registry v2: versioning, shared templates + per-tenant overrides,
+  per-tool rate limits. MCP transport optional, external-facing only.
