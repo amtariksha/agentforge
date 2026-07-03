@@ -1,6 +1,4 @@
 import type { FastifyInstance } from 'fastify';
-import { createReadStream } from 'node:fs';
-import { access } from 'node:fs/promises';
 import { eq, and, desc, sql } from 'drizzle-orm';
 import { db } from '../../shared/db.js';
 import { tenantWallets, billingPeriods, ledgerEntries, invoices, notifications } from '../../shared/schema/index.js';
@@ -9,6 +7,7 @@ import type { JwtPayload } from '../../shared/middleware/auth.js';
 import { paginationSchema, walletAdjustSchema } from '../../shared/validators/index.js';
 import { applyLedgerEntry, ensureWallet } from '../../billing/ledger.js';
 import { clearPausedCache } from '../../billing/wallet-state.js';
+import { openInvoicePdf } from '../../billing/invoice-storage.js';
 import { toUsd } from '../../billing/money.js';
 import { utcMonthStart } from '../../billing/period.js';
 import { enqueueBillingRollup, enqueueInvoicePdf } from '../../shared/queue.js';
@@ -104,13 +103,14 @@ export async function billingRoutes(app: FastifyInstance) {
     if (!invoice) return reply.status(404).send({ error: 'Invoice not found' });
     if (!invoice.pdfPath) return reply.status(404).send({ error: 'PDF not ready — still rendering' });
     try {
-      await access(invoice.pdfPath);
-    } catch {
-      return reply.status(404).send({ error: 'PDF file missing' });
+      const stream = await openInvoicePdf(invoice.pdfPath);
+      reply.header('Content-Type', 'application/pdf');
+      reply.header('Content-Disposition', `inline; filename="${invoice.invoiceNumber}.pdf"`);
+      return reply.send(stream);
+    } catch (err) {
+      log.warn({ err, invoiceId: invoice.id }, 'Invoice PDF unavailable');
+      return reply.status(404).send({ error: 'PDF unavailable' });
     }
-    reply.header('Content-Type', 'application/pdf');
-    reply.header('Content-Disposition', `inline; filename="${invoice.invoiceNumber}.pdf"`);
-    return reply.send(createReadStream(invoice.pdfPath));
   });
 
   app.post<{ Params: { id: string } }>(
