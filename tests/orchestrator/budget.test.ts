@@ -62,10 +62,25 @@ describe('checkBudget', () => {
     expect(redisStore.get('budget:usage:t1')).toBe('800');
   });
 
-  it('reports over-limit when usage meets or exceeds the cap', async () => {
+  it('reports over-limit and a 100% crossing on a cache miss', async () => {
     mock.queueSelect('llm_usage_logs', [{ totalTokens: 1500 }]);
     const res = await checkBudget('t1', config(1000));
     expect(res.withinBudget).toBe(false);
+    expect(res.thresholdCrossed).toBe(100);
+  });
+
+  it('signals an 80% crossing on a cache miss', async () => {
+    mock.queueSelect('llm_usage_logs', [{ totalTokens: 850 }]);
+    const res = await checkBudget('t1', config(1000));
+    expect(res.withinBudget).toBe(true);
+    expect(res.thresholdCrossed).toBe(80);
+  });
+
+  it('never signals a crossing on a cache hit (bounded to the miss path)', async () => {
+    redisStore.set('budget:usage:t1', '1500');
+    const res = await checkBudget('t1', config(1000));
+    expect(res.withinBudget).toBe(false);
+    expect(res.thresholdCrossed).toBeNull();
   });
 });
 

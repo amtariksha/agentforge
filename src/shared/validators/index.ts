@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { WEBHOOK_EVENTS, type WebhookEvent } from '../../gateway/webhook-events.js';
 
 // Admin auth
 export const loginSchema = z.object({
@@ -130,10 +131,30 @@ export const createHumanAgentSchema = z.object({
 });
 
 // Webhook configs
+// Events are enum-checked against the known WebhookEvent union: a typo'd
+// subscription would silently never match at dispatch (exact-string), which for
+// billing alerts is a silent alerting outage.
+export const webhookEventSchema = z.enum(WEBHOOK_EVENTS as [WebhookEvent, ...WebhookEvent[]]);
+
 export const createWebhookConfigSchema = z.object({
   url: z.string().url(),
-  events: z.array(z.string()).min(1),
+  events: z.array(webhookEventSchema).min(1),
   secret: z.string().optional(),
+});
+
+export const updateWebhookConfigSchema = z.object({
+  url: z.string().url().optional(),
+  events: z.array(webhookEventSchema).min(1).optional(),
+  secret: z.string().nullable().optional(),
+  isActive: z.boolean().optional(),
+});
+
+// Billing (M3) — manual wallet adjustment (super-admin)
+export const walletAdjustSchema = z.object({
+  type: z.enum(['credit_manual', 'debit_manual', 'credit_bonus', 'refund']),
+  amountUsd: z.number().positive(),
+  reason: z.string().min(1).max(500),
+  idempotencyKey: z.string().min(1).max(200),
 });
 
 // Pagination

@@ -31,6 +31,7 @@ import { loadToolsForAgent, executeTool } from '../tools/executor.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 import { computeCostUsd } from './pricing.js';
 import { fireWebhooks } from '../gateway/outbound-webhooks.js';
+import { isTenantPaused } from '../billing/wallet-state.js';
 import { streamLlm } from './llm-provider.js';
 import { renderUiToolDef } from '../tools/platform/render-ui.js';
 import { textBlock, type ContentBlock } from '../ui/content-blocks.js';
@@ -90,6 +91,13 @@ export async function streamAgentBySlug(params: StreamAgentParams): Promise<Stre
   if (!agent.isActive) {
     onEvent({ type: 'error', message: `Agent "${agentSlug}" is not active` });
     return { finalText: '', conversationId: '', agentDisabled: 'inactive' };
+  }
+
+  // 1b. Wallet pause (prepaid depleted or manual) — hard block on spend.
+  if (await isTenantPaused(tenantId)) {
+    childLog.warn({ tenantId }, 'Tenant wallet paused — blocking stream');
+    onEvent({ type: 'error', message: 'agent_disabled_budget' });
+    return { finalText: '', conversationId: '', agentDisabled: 'budget', reason: 'wallet_paused' };
   }
 
   // 2. Daily spend cap

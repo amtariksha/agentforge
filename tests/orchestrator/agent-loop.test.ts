@@ -40,6 +40,8 @@ vi.mock('../../src/gateway/outbound-webhooks.js', () => ({ fireWebhooks: vi.fn(a
 vi.mock('../../src/admin/hitl/escalation.js', () => ({ evaluateEscalation: vi.fn(() => ({ shouldEscalate: false, reasons: [], priority: 'low' })), executeEscalation: vi.fn(async () => {}) }));
 vi.mock('../../src/admin/corrections/routes.js', () => ({ loadActiveCorrections: vi.fn(async () => []) }));
 vi.mock('../../src/admin/corrections/retrieval.js', () => ({ searchPastCorrections: h.searchPastMock, formatPastCorrections: h.formatPastMock }));
+vi.mock('../../src/billing/wallet-state.js', () => ({ isTenantPaused: vi.fn(async () => false) }));
+vi.mock('../../src/billing/alerts.js', () => ({ raiseAlert: vi.fn(async () => ({ raised: false })) }));
 
 import { processMessage } from '../../src/orchestrator/agent-loop.js';
 

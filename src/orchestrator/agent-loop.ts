@@ -25,6 +25,9 @@ import { searchPastCorrections, formatPastCorrections } from '../admin/correctio
 import { searchKnowledge } from '../memory/knowledge-base.js';
 import { createChildLogger } from '../shared/utils/logger.js';
 import { checkBudget, incrementBudgetUsage } from './budget.js';
+import { isTenantPaused } from '../billing/wallet-state.js';
+import { raiseAlert } from '../billing/alerts.js';
+import { utcMonthPrefix } from '../billing/period.js';
 import { callLlm } from './llm-provider.js';
 import { computeCostUsd } from './pricing.js';
 import type { UnifiedMessage, TenantConfig, ConversationTrace, IntentClassification } from '../shared/types/index.js';
@@ -86,8 +89,32 @@ export async function processMessage(
       metadata: message.metadata,
     });
 
-    // 3b. Budget check
+    // 3b. Wallet pause (prepaid depleted or manual) — hard block on spend.
+    if (await isTenantPaused(tenantId)) {
+      childLog.warn({ tenantId }, 'Tenant wallet paused — blocking turn');
+      if (message.channel === 'whatsapp') {
+        await sendWhatsAppText(tenantConfig, {
+          to: message.sender.platformUserId,
+          text: 'Our AI assistant is temporarily unavailable. Please contact us directly for help.',
+        });
+      }
+      return;
+    }
+
+    // 3c. Token-budget check (+ once-per-tier/month alert).
     const budget = await checkBudget(tenantId, tenantConfig);
+    if (budget.thresholdCrossed) {
+      await raiseAlert({
+        tenantId,
+        type: 'budget.tokens',
+        severity: budget.thresholdCrossed === 100 ? 'critical' : 'warning',
+        title: budget.thresholdCrossed === 100 ? 'Monthly token budget exceeded' : 'Monthly token budget at 80%',
+        body: `Used ${budget.used} of ${budget.limit} tokens (${budget.percentUsed.toFixed(0)}%).`,
+        dedupeKey: `budget-tokens:${tenantId}:${utcMonthPrefix(new Date())}:${budget.thresholdCrossed}`,
+        webhookEvent: budget.thresholdCrossed === 100 ? 'budget.exceeded' : 'budget.threshold_reached',
+        webhookData: { used: budget.used, limit: budget.limit, pct: budget.percentUsed.toFixed(0) },
+      }).catch((err) => childLog.error({ err }, 'Budget alert failed'));
+    }
     if (!budget.withinBudget) {
       childLog.warn({ used: budget.used, limit: budget.limit }, 'Tenant budget exceeded');
       if (message.channel === 'whatsapp') {

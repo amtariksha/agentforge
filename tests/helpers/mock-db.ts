@@ -34,6 +34,7 @@ export interface MockDb {
   inserts: InsertCall[];
   updates: UpdateCall[];
   deletes: DeleteCall[];
+  transactions: number;
   reset(): void;
 }
 
@@ -44,6 +45,9 @@ export interface MockDbClient {
   update: (table: Table) => QueryBuilder;
   delete: (table: Table) => QueryBuilder;
   execute: (...args: unknown[]) => Promise<{ rows: Row[] }>;
+  // Replays the callback against the same fluent stub (no real isolation) and
+  // records the boundary so tests can assert work happened inside a transaction.
+  transaction: <T>(cb: (tx: MockDbClient) => Promise<T>) => Promise<T>;
 }
 
 type Kind = 'select' | 'insert' | 'update' | 'delete';
@@ -66,6 +70,7 @@ class QueryBuilder implements PromiseLike<unknown> {
   groupBy(): this { return this; }
   innerJoin(): this { return this; }
   leftJoin(): this { return this; }
+  for(): this { return this; }        // SELECT ... FOR UPDATE
   onConflictDoNothing(): this { return this; }
   onConflictDoUpdate(): this { return this; }
 
@@ -112,6 +117,7 @@ interface MockState {
   inserts: InsertCall[];
   updates: UpdateCall[];
   deletes: DeleteCall[];
+  transactions: number;
 }
 
 export function createMockDb(): MockDb {
@@ -122,6 +128,7 @@ export function createMockDb(): MockDb {
     inserts: [],
     updates: [],
     deletes: [],
+    transactions: 0,
   };
 
   const db: MockDbClient = {
@@ -132,6 +139,10 @@ export function createMockDb(): MockDb {
     execute: vi.fn(async () =>
       state.executeResults.length > 0 ? state.executeResults.shift()! : { rows: [] },
     ),
+    transaction: async (cb) => {
+      state.transactions++;
+      return cb(db);
+    },
   };
 
   return {
@@ -146,6 +157,7 @@ export function createMockDb(): MockDb {
     get inserts() { return state.inserts; },
     get updates() { return state.updates; },
     get deletes() { return state.deletes; },
+    get transactions() { return state.transactions; },
     reset() {
       state.selectResults.clear();
       state.returningResults = [];
@@ -153,6 +165,7 @@ export function createMockDb(): MockDb {
       state.inserts = [];
       state.updates = [];
       state.deletes = [];
+      state.transactions = 0;
     },
   };
 }

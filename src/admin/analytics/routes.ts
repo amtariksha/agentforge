@@ -2,7 +2,17 @@ import type { FastifyInstance } from 'fastify';
 import { eq, sql, and, gte } from 'drizzle-orm';
 import { db } from '../../shared/db.js';
 import { conversations, messages, tickets, llmUsageLogs, conversationTraces } from '../../shared/schema/index.js';
-import { authMiddleware } from '../../shared/middleware/auth.js';
+import { authMiddleware, getActiveTenantId, isSuperAdmin, requireSuperAdmin } from '../../shared/middleware/auth.js';
+import type { FastifyRequest } from 'fastify';
+
+/**
+ * A tenant-scoped analytics route takes the tenant from the URL. Guard against
+ * cross-tenant reads: only a super-admin may read a tenant other than their own
+ * effective tenant.
+ */
+function canReadTenant(request: FastifyRequest, tenantId: string): boolean {
+  return isSuperAdmin(request) || tenantId === getActiveTenantId(request);
+}
 
 export async function analyticsRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authMiddleware);
@@ -12,6 +22,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     '/admin/analytics/:tenantId/overview',
     async (request, reply) => {
       const { tenantId } = request.params;
+      if (!canReadTenant(request, tenantId)) return reply.status(403).send({ error: 'Forbidden' });
       const days = parseInt(request.query.days ?? '30', 10);
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -41,6 +52,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     '/admin/analytics/:tenantId/costs',
     async (request, reply) => {
       const { tenantId } = request.params;
+      if (!canReadTenant(request, tenantId)) return reply.status(403).send({ error: 'Forbidden' });
       const days = parseInt(request.query.days ?? '30', 10);
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -88,6 +100,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     '/admin/analytics/:tenantId/conversations',
     async (request, reply) => {
       const { tenantId } = request.params;
+      if (!canReadTenant(request, tenantId)) return reply.status(403).send({ error: 'Forbidden' });
       const days = parseInt(request.query.days ?? '30', 10);
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -118,6 +131,7 @@ export async function analyticsRoutes(app: FastifyInstance) {
     '/admin/analytics/:tenantId/hitl',
     async (request, reply) => {
       const { tenantId } = request.params;
+      if (!canReadTenant(request, tenantId)) return reply.status(403).send({ error: 'Forbidden' });
       const days = parseInt(request.query.days ?? '30', 10);
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -135,8 +149,8 @@ export async function analyticsRoutes(app: FastifyInstance) {
     },
   );
 
-  // System-wide overview (super admin)
-  app.get('/admin/analytics/system-overview', async (_request, reply) => {
+  // System-wide overview — platform-wide costs, super-admin only.
+  app.get('/admin/analytics/system-overview', { preHandler: requireSuperAdmin() }, async (_request, reply) => {
     const [totals] = await db.select({
       totalConversations: sql<number>`count(*)`,
       activeConversations: sql<number>`count(*) filter (where status = 'active')`,
@@ -149,4 +163,40 @@ export async function analyticsRoutes(app: FastifyInstance) {
 
     return reply.send({ conversations: totals, costs: costTotals });
   });
+
+  // Per-conversation cost (billing) — tenant-scoped via the effective tenant.
+  app.get<{ Params: { conversationId: string } }>(
+    '/admin/analytics/conversations/:conversationId/cost',
+    async (request, reply) => {
+      const tenantId = getActiveTenantId(request);
+      const { conversationId } = request.params;
+
+      const [totals] = await db.select({
+        totalCost: sql<string>`coalesce(sum(cost_usd), 0)`,
+        calls: sql<number>`count(*)`,
+        unpricedRows: sql<number>`count(*) filter (where cost_usd is null)`,
+        inputTokens: sql<number>`coalesce(sum(tokens_input), 0)`,
+        outputTokens: sql<number>`coalesce(sum(tokens_output), 0)`,
+        cachedTokens: sql<number>`coalesce(sum(coalesce(tokens_cache_read, tokens_cached)), 0)`,
+      }).from(llmUsageLogs).where(and(
+        eq(llmUsageLogs.tenantId, tenantId),
+        eq(llmUsageLogs.conversationId, conversationId),
+      ));
+
+      const turns = await db.select({
+        model: llmUsageLogs.model,
+        provider: llmUsageLogs.provider,
+        agentTypeSlug: llmUsageLogs.agentTypeSlug,
+        costUsd: llmUsageLogs.costUsd,
+        tokensInput: llmUsageLogs.tokensInput,
+        tokensOutput: llmUsageLogs.tokensOutput,
+        createdAt: llmUsageLogs.createdAt,
+      }).from(llmUsageLogs).where(and(
+        eq(llmUsageLogs.tenantId, tenantId),
+        eq(llmUsageLogs.conversationId, conversationId),
+      )).orderBy(llmUsageLogs.createdAt);
+
+      return reply.send({ conversationId, totals, turns });
+    },
+  );
 }

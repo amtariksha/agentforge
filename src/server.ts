@@ -19,6 +19,7 @@ import { agentTypeRoutes } from './admin/agent-types/routes.js';
 import { toolRoutes } from './admin/tools/routes.js';
 import { guardrailRoutes } from './admin/guardrails/routes.js';
 import { webhookAdminRoutes } from './admin/webhooks/routes.js';
+import { billingRoutes } from './admin/billing/routes.js';
 import { knowledgeBaseRoutes } from './memory/knowledge-base.js';
 import { websocketRoutes } from './gateway/websocket.js';
 import { startWorkers, setupRecurringJobs } from './shared/queue.js';
@@ -75,6 +76,7 @@ async function start() {
   await app.register(toolRoutes);
   await app.register(guardrailRoutes);
   await app.register(webhookAdminRoutes);
+  await app.register(billingRoutes);
   await app.register(knowledgeBaseRoutes);
   await app.register(websocketRoutes);
 

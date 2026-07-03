@@ -26,6 +26,7 @@ const navItems: NavItem[] = [
   { href: "/operators", label: "Operators", icon: "👥" },
   { href: "/webhooks", label: "Webhooks", icon: "🔗" },
   { href: "/analytics", label: "Analytics", icon: "📈" },
+  { href: "/billing", label: "Billing", icon: "💰" },
   { href: "/settings", label: "Settings", icon: "⚙️" },
 ];
 

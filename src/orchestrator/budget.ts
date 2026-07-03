@@ -14,30 +14,38 @@ const BUDGET_CACHE_TTL = 300; // 5 minutes
  * Check if a tenant has exceeded their monthly token budget.
  * Returns true if under budget, false if over.
  */
-export async function checkBudget(tenantId: string, config: TenantConfig): Promise<{
+export interface BudgetStatus {
   withinBudget: boolean;
   used: number;
   limit: number;
   percentUsed: number;
-}> {
+  /**
+   * A newly-crossed alert tier, set ONLY on the cache-miss (freshly computed)
+   * path — so callers alert at most once per cache window (~5 min), and the
+   * alert layer's month-scoped dedupe finalizes it to once per month per tier.
+   * `null` on a cache hit or when under 80%.
+   */
+  thresholdCrossed: 80 | 100 | null;
+}
+
+export async function checkBudget(tenantId: string, config: TenantConfig): Promise<BudgetStatus> {
   const limit = config.ai.monthlyTokenBudget;
   if (!limit || limit <= 0) {
-    return { withinBudget: true, used: 0, limit: 0, percentUsed: 0 };
+    return { withinBudget: true, used: 0, limit: 0, percentUsed: 0, thresholdCrossed: null };
   }
 
-  // Check cache first
+  // Check cache first — a hit does not re-signal a crossing (bounded to misses).
   const cacheKey = `${BUDGET_CACHE_KEY_PREFIX}${tenantId}`;
   const cached = await redis.get(cacheKey);
   if (cached) {
     const used = parseInt(cached, 10);
     const percentUsed = (used / limit) * 100;
-    return { withinBudget: used < limit, used, limit, percentUsed };
+    return { withinBudget: used < limit, used, limit, percentUsed, thresholdCrossed: null };
   }
 
-  // Query actual usage for current month
-  const firstOfMonth = new Date();
-  firstOfMonth.setDate(1);
-  firstOfMonth.setHours(0, 0, 0, 0);
+  // Query actual usage for the current UTC month (aligns with billing_periods).
+  const now = new Date();
+  const firstOfMonth = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0));
 
   const [result] = await db.select({
     totalTokens: sql<number>`coalesce(sum(tokens_input + tokens_output), 0)`,
@@ -54,13 +62,16 @@ export async function checkBudget(tenantId: string, config: TenantConfig): Promi
 
   const percentUsed = (used / limit) * 100;
 
+  let thresholdCrossed: 80 | 100 | null = null;
   if (used >= limit) {
+    thresholdCrossed = 100;
     log.warn({ tenantId, used, limit, percentUsed: percentUsed.toFixed(1) }, 'Tenant budget exceeded');
   } else if (percentUsed >= 80) {
+    thresholdCrossed = 80;
     log.info({ tenantId, percentUsed: percentUsed.toFixed(1) }, 'Tenant budget nearing limit');
   }
 
-  return { withinBudget: used < limit, used, limit, percentUsed };
+  return { withinBudget: used < limit, used, limit, percentUsed, thresholdCrossed };
 }
 
 /**

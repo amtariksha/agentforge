@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { eq, and } from 'drizzle-orm';
 import { db } from '../../shared/db.js';
 import { webhookConfigs } from '../../shared/schema/index.js';
-import { createWebhookConfigSchema } from '../../shared/validators/index.js';
+import { createWebhookConfigSchema, updateWebhookConfigSchema } from '../../shared/validators/index.js';
 import { authMiddleware, requireRole } from '../../shared/middleware/auth.js';
 
 export async function webhookAdminRoutes(app: FastifyInstance) {
@@ -37,9 +37,18 @@ export async function webhookAdminRoutes(app: FastifyInstance) {
     '/admin/webhooks/:tenantId/:id',
     { preHandler: requireRole('admin') },
     async (request, reply) => {
-      const body = request.body as Record<string, unknown>;
+      const parsed = updateWebhookConfigSchema.safeParse(request.body);
+      if (!parsed.success) {
+        return reply.status(400).send({ error: 'Invalid request', details: parsed.error.flatten() });
+      }
+      const body = parsed.data;
       const [updated] = await db.update(webhookConfigs)
-        .set(body)
+        .set({
+          ...(body.url !== undefined && { url: body.url }),
+          ...(body.events !== undefined && { events: body.events }),
+          ...(body.secret !== undefined && { secret: body.secret }),
+          ...(body.isActive !== undefined && { isActive: body.isActive }),
+        })
         .where(and(eq(webhookConfigs.tenantId, request.params.tenantId), eq(webhookConfigs.id, request.params.id)))
         .returning();
       if (!updated) return reply.status(404).send({ error: 'Webhook config not found' });

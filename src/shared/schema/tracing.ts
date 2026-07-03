@@ -41,4 +41,6 @@ export const llmUsageLogs = pgTable('llm_usage_logs', {
 }, (table) => [
   index('idx_llm_usage_tenant').on(table.tenantId, table.createdAt),
   index('idx_llm_usage_tenant_agent_date').on(table.tenantId, table.agentTypeSlug, table.createdAt),
+  // Per-conversation cost API (billing) — otherwise unindexed.
+  index('idx_llm_usage_tenant_conversation').on(table.tenantId, table.conversationId),
 ]);

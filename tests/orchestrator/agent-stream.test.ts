@@ -15,6 +15,7 @@ vi.mock('../../src/orchestrator/llm-provider.js', () => ({ streamLlm: streamMock
 vi.mock('../../src/tools/executor.js', () => ({ loadToolsForAgent: vi.fn(async () => []), executeTool: executeToolMock }));
 vi.mock('../../src/orchestrator/pricing.js', () => ({ computeCostUsd: vi.fn(async () => ({ costUsd: 0.01, pricingId: 'p1' })) }));
 vi.mock('../../src/gateway/outbound-webhooks.js', () => ({ fireWebhooks: vi.fn(async () => {}) }));
+vi.mock('../../src/billing/wallet-state.js', () => ({ isTenantPaused: vi.fn(async () => false) }));
 
 import { streamAgentBySlug } from '../../src/orchestrator/agent-stream.js';
 
